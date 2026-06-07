@@ -56,7 +56,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.10.1</div>
+<div class="ver">v1.11.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -215,9 +215,20 @@ function timeoutFetch(url, opts, ms = 6000) {
   return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
 
-// Two best-effort resolvers for short links. Both follow Google's redirect
-// server-side via a headless browser; Google blocks them often, so they're
+// Three best-effort resolvers for short links. All follow Google's redirect
+// server-side; Google blocks datacenter IPs inconsistently, so they're
 // raced with a timeout and treated as a bonus, not a guarantee.
+async function viaMapu(url) {
+  // mapu.retiolus.net is purpose-built for maps.app.goo.gl; uses a real
+  // browser UA to get past Google's bot detection. Returns { full_link }.
+  const res = await timeoutFetch('https://mapu.retiolus.net/unshortener?link=' + encodeURIComponent(url));
+  if (!res.ok) throw 0;
+  const data = await res.json();
+  const name = nameFromUrl(data.full_link) || cleanTitle(data.full_link);
+  if (!name) throw 0;
+  return { name, boro: boroFromAddr(data.full_link) };
+}
+
 async function viaMicrolink(url) {
   const res = await timeoutFetch('https://api.microlink.io/?url=' + encodeURIComponent(url));
   const data = res.ok ? (await res.json()).data : null;
@@ -244,7 +255,7 @@ async function resolveMapsLink(url) {
 
   // Short links (maps.app.goo.gl) need a proxy to follow Google's redirect.
   try {
-    const place = await Promise.any([viaMicrolink(url), viaJina(url)]);
+    const place = await Promise.any([viaMapu(url), viaMicrolink(url), viaJina(url)]);
     return splitPlace(place.name, place.boro);
   } catch {
     throw new Error('app-link');
