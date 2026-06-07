@@ -56,7 +56,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.10.0</div>
+<div class="ver">v1.10.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -273,18 +273,18 @@ async function onMapsLink() {
 }
 
 // Read the clipboard (needs the button tap as the user gesture) and resolve it.
-async function pasteLink() {
-  let text = '';
-  try { text = (await navigator.clipboard.readText() || '').trim(); }
-  catch { return setError('Clipboard blocked — paste the link manually instead.'); }
-  if (!text) return setStatus('Clipboard is empty.');
-  mapsInput.value = text;
+// prompt() is synchronous and uses the native iOS paste action — no clipboard
+// permission needed, works reliably on every mobile browser.
+function pasteLink() {
+  const text = (prompt('Paste your Google Maps link:') || '').trim();
+  if (!text) return;
   if (!MAPS_HOSTS.test(text)) return setError("That doesn't look like a Google Maps link.");
-  await onMapsLink();
+  mapsInput.value = text;
+  onMapsLink();
 }
 
 btn.addEventListener('click', search);
-pasteBtn.addEventListener('click', pasteLink);
+pasteBtn.addEventListener('click', () => pasteLink());
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
 
