@@ -1,0 +1,159 @@
+---
+name: test
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 18 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+---
+
+# NYC Restaurant Grade — Test Suite
+
+Run the full 18-case Playwright test suite, fix any failures, and confirm 50/50 assertions pass.
+
+## Setup
+
+Playwright is pre-installed at `/opt/node22/lib/node_modules/playwright`.
+Tests run against the local file via `pathToFileURL`. No server needed.
+Write to `test.mjs` in the project root, run with `node test.mjs`, delete when done.
+
+## Step 1 — Write test.mjs
+
+Use this exact harness structure. Do NOT deviate from the fixture shapes or helper names — the test cases depend on them.
+
+```js
+import pw from '/opt/node22/lib/node_modules/playwright/index.js';
+import { pathToFileURL } from 'url';
+const { chromium } = pw;
+const BASE = pathToFileURL(process.cwd() + '/nyc-restaurant-grade.html').href;
+
+// Fixtures — minimal rows that satisfy groupByRestaurant()
+const mkRow = o => ({
+  camis:'1', dba:'TEST', building:'1', street:'MAIN ST', boro:'Manhattan',
+  zipcode:'10001', grade:'A', score:'5',
+  grade_date:'2025-01-01T00:00:00.000', inspection_date:'2025-01-01T00:00:00.000',
+  inspection_type:'Cycle Inspection', violation_description:null,
+  critical_flag:null, action:null, ...o
+});
+const MAZZAT = mkRow({ camis:'2', dba:'MAZZAT', boro:'Brooklyn', zipcode:'11231', score:'13',
+  grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
+const MIAS = mkRow({ camis:'3', dba:"MIA'S BROOKLYN BAKERY", boro:'Brooklyn', zipcode:'11201' });
+
+// Harness
+let pass = 0, fail = 0;
+const failures = [];
+function ok(cond, msg) {
+  if (cond) { console.log(`    ✓ ${msg}`); pass++; }
+  else { console.error(`    ✗ ${msg}`); fail++; failures.push(msg); }
+}
+
+function setupRoute(page, mocks) {
+  return page.route('**/*', r => {
+    const u = r.request().url();
+    if (u.startsWith('file:')) return r.continue();
+    for (const [pat, resp] of mocks) {
+      if (u.includes(pat)) {
+        if (typeof resp === 'function') return resp(r, u);
+        return r.fulfill({
+          status: resp.status ?? 200,
+          contentType: resp.ct ?? (resp.text ? 'text/plain' : 'application/json'),
+          body: typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body)
+        });
+      }
+    }
+    return r.abort();
+  });
+}
+
+const J  = body => ({ body });                                    // JSON response
+const TX = body => ({ text: true, ct: 'text/plain', body });     // plain-text response
+const E  = { status: 503, ct: 'text/plain', body: 'error' };    // resolver failure
+
+async function T(label, setup, fn, pageUrl) {
+  console.log(`\n● ${label}`);
+  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  const page = await browser.newPage();
+  const jsErrs = [];
+  page.on('pageerror', e => jsErrs.push(e.message));
+  try {
+    if (setup) await setup(page);
+    await page.goto(pageUrl || BASE, { waitUntil: 'load' });
+    await fn(page);
+    ok(jsErrs.length === 0, 'no JS errors');
+  } catch (e) {
+    const m = e.message.split('\n')[0];
+    console.error(`    ERROR: ${m}`);
+    fail++; failures.push(`${label}: ${m}`);
+  } finally {
+    await browser.close();
+  }
+}
+
+const triggerMaps = (page, url) => page.evaluate(u => {
+  const el = document.getElementById('maps-input');
+  el.value = u;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}, url);
+
+const waitErr = (page, ms = 20000) =>
+  page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
+```
+
+Then implement all 18 test cases exactly as specified in CLAUDE.md §Testing.
+
+## Step 2 — Run
+
+```bash
+node test.mjs
+```
+
+Expected output ends with: `50 tests: 50 passed, 0 failed`
+
+## Step 3 — Fix failures
+
+### JS syntax error ("Invalid or unexpected token")
+The Edit tool may corrupt straight apostrophes into curly quotes. Run the syntax check first:
+```bash
+node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8'); new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('OK');"
+```
+If it fails, find the bad lines:
+```bash
+node -e "
+const fs=require('fs'),html=fs.readFileSync('nyc-restaurant-grade.html','utf8');
+const lines=html.match(/<script>([\s\S]*?)<\/script>/)[1].split('\n');
+lines.forEach((l,i)=>{for(let j=0;j<l.length;j++){const c=l.charCodeAt(j);if(c===0x2018||c===0x2019)process.stdout.write('L'+(i+1)+': '+JSON.stringify(l)+'\n');}});
+"
+```
+Fix with Python (preserves encoding reliably):
+```python
+with open('nyc-restaurant-grade.html', 'r', encoding='utf-8') as f: html = f.read()
+start = html.index('<script>') + len('<script>')
+end = html.index('</script>')
+lines = html[start:end].split('\n')
+# fix lines[N] = "corrected line with straight apostrophes"
+with open('nyc-restaurant-grade.html', 'w', encoding='utf-8') as f:
+    f.write(html[:start] + '\n'.join(lines) + html[end:])
+```
+
+### Test timeouts (Maps resolver tests)
+Ensure mock patterns match the actual outbound URLs:
+- mapu → `mapu.retiolus.net`
+- microlink → `microlink.io`
+- jina → `jina.ai`
+- DOHMH → `43nn-pn8j`
+
+### Apostrophe test (tests 6 & 7) fails
+Check that `displayName` (straight quotes) and `name` (SoQL-escaped with `''`) are kept separate in `search()`. The captured request URL should have `MIA''S` when decoded.
+
+## Step 4 — Iterate
+
+Re-run after every fix. Do not stop until output shows `0 failed`.
+
+## Step 5 — Clean up and push
+
+```bash
+rm test.mjs
+git add nyc-restaurant-grade.html
+git commit -m "..."
+git push -u origin main
+```
+
+## Done
+
+Report: how many passed, how many iterations it took, and any gotchas encountered.
