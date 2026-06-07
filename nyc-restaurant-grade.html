@@ -47,12 +47,12 @@
 </div>
 <div class="divider"><span>or paste a link</span></div>
 <div class="row">
-  <input id="maps-input" placeholder="Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
+  <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
 </div>
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.7.0</div>
+<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.8.0</div>
 
 <script>
 const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
@@ -161,76 +161,54 @@ function boroFromAddr(addr) {
   return '';
 }
 
+function timeoutFetch(url, opts, ms) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms || 6000);
+  return fetch(url, Object.assign({}, opts, { signal: c.signal })).finally(() => clearTimeout(t));
+}
+
+// Best-effort resolver via microlink (headless Chromium). Often blocked by Google
+// for short app links, so it's bounded and treated as a bonus, not a guarantee.
+async function tryMicrolink(url) {
+  const res = await timeoutFetch('https://api.microlink.io/?url=' + encodeURIComponent(url), {}, 6000);
+  if (!res.ok) throw 0;
+  const d = await res.json();
+  if (d.status !== 'success') throw 0;
+  const finalUrl = d.data && d.data.url || '';
+  const f = extractFromUrl(finalUrl);
+  if (f) return Object.assign(f, { boro: boroFromAddr(finalUrl) });
+  const title = (d.data && d.data.title || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
+  if (title && !/^google/i.test(title) && title.length > 1) return { name: title, boro: boroFromAddr(finalUrl) };
+  throw 0;
+}
+
+async function tryJina(url) {
+  const res = await timeoutFetch('https://r.jina.ai/' + url, { headers: { 'X-Return-Format': 'text' } }, 6000);
+  if (!res.ok) throw 0;
+  const text = await res.text();
+  const src = (text.match(/URL Source:\s*(\S+)/i)||[])[1]||'';
+  const f = extractFromUrl(src);
+  if (f) return Object.assign(f, { boro: boroFromAddr(text) });
+  const tl = (text.match(/^Title:\s*(.+)$/im)||[])[1]||'';
+  const tn = tl.replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
+  if (tn && !/^google/i.test(tn) && tn.length > 1) return { name: tn, boro: boroFromAddr(text) };
+  const m = text.match(/\/maps\/place\/([^/@?\s\n\r"]{2,80})/i);
+  if (m) return { name: decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(), boro: boroFromAddr(text) };
+  throw 0;
+}
+
 async function resolveMapsLink(url) {
+  // Full Maps URLs carry the name in the path — resolves instantly, no network.
   const direct = extractFromUrl(url);
   if (direct) return direct;
 
-  // Try 1: Microlink.io — headless Chromium, handles JS-rendered Firebase Dynamic Links
+  // Short app links (maps.app.goo.gl) need a proxy to follow Google's redirect.
+  // Google 403s bots/proxies, so this is best-effort and time-bounded.
   try {
-    const res = await fetch('https://api.microlink.io/?url=' + encodeURIComponent(url));
-    if (res.ok) {
-      const d = await res.json();
-      if (d.status === 'success') {
-        const finalUrl = d.data?.url || '';
-        const fromUrl = extractFromUrl(finalUrl);
-        if (fromUrl) return { ...fromUrl, boro: boroFromAddr(finalUrl) };
-        const title = (d.data?.title || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-        if (title && !/^google/i.test(title) && title.length > 1) return { name: title, boro: boroFromAddr(finalUrl) };
-      }
-    }
-  } catch(e) {}
-
-  // Try 2: Jina.ai reader — headless browser, handles JS-rendered redirects
-  try {
-    const res = await fetch('https://r.jina.ai/' + url, { headers: { 'X-Return-Format': 'text' } });
-    if (res.ok) {
-      const text = await res.text();
-      const srcUrl = (text.match(/URL Source:\s*(\S+)/i)||[])[1]||'';
-      const fromSrc = extractFromUrl(srcUrl);
-      if (fromSrc) return { ...fromSrc, boro: boroFromAddr(text) };
-      const titleLine = (text.match(/^Title:\s*(.+)$/im)||[])[1]||'';
-      const titleName = titleLine.replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-      if (titleName && !/^google/i.test(titleName) && titleName.length > 1) return { name: titleName, boro: boroFromAddr(text) };
-      const m = text.match(/\/maps\/place\/([^/@?\s\n\r"]{2,80})/i);
-      if (m) return { name: decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(), boro: boroFromAddr(text) };
-    }
-  } catch(e) {}
-
-  let html = '', finalUrl = '';
-
-  // Try 3: allorigins.win — returns status.url (the final URL after all redirects)
-  try {
-    const res = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
-    if (res.ok) { const d = await res.json(); finalUrl = d?.status?.url || ''; html = d?.contents || ''; }
-  } catch(e) {}
-
-  const fromFinal = extractFromUrl(finalUrl);
-  if (fromFinal) return { ...fromFinal, boro: boroFromAddr(html) };
-
-  // Try 4: corsproxy.io
-  if (!html) {
-    try {
-      const res = await fetch(PROXY + encodeURIComponent(url));
-      if (res.ok) html = await res.text();
-    } catch(e) {}
+    return await Promise.any([tryMicrolink(url), tryJina(url)]);
+  } catch(e) {
+    throw new Error('app-link');
   }
-
-  if (html) {
-    const m = html.match(/maps(?:\\\/|\/|%2F)place(?:\\\/|\/|%2F)([^\\\/\?@"&<\s\n\r]{2,80})/i);
-    if (m) { const n = decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(); if (n) return { name: n, boro: boroFromAddr(html) }; }
-
-    const cu = html.match(/["'](?:continueUrl|ifl|url)['"]\s*[=:]\s*["']([^"']*maps[^"']*)["']/i);
-    if (cu) { const r = extractFromUrl(cu[1]); if (r) return { ...r, boro: boroFromAddr(html) }; }
-
-    const mu = html.match(/https?:\\?\/\\?\/(?:www\.)?google\.com\\?\/maps[^\s"'<>\n\r]{5,}/i);
-    if (mu) { const r = extractFromUrl(mu[0].replace(/\\\//g,'/')); if (r) return { ...r, boro: boroFromAddr(html) }; }
-
-    const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
-      .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-    if (title && !/^google/i.test(title)) return { name: title, boro: boroFromAddr(html) };
-  }
-
-  throw new Error('app-link');
 }
 
 const mapsInput = document.getElementById('maps-input');
@@ -247,9 +225,9 @@ mapsInput.addEventListener('input', async function() {
     await search();
   } catch(e) {
     statusEl.className='status err';
-    const safeUrl = url.replace(/"/g,'%22');
+    const safeUrl = url.replace(/"/g,'&quot;');
     if (e.message === 'app-link') {
-      statusEl.innerHTML=`Maps app links can't be auto-resolved. <a href="${safeUrl}" target="_blank" rel="noopener" style="color:#60a5fa;text-decoration:underline">Open it ↗</a> then type the name above.`;
+      statusEl.innerHTML=`Short Maps links can't be expanded here (Google blocks it). <a href="${safeUrl}" target="_blank" rel="noopener" style="color:#60a5fa;text-decoration:underline">Open it ↗</a>, let the map load, then copy the full URL from the address bar and paste it back — or just type the name above.`;
     } else {
       statusEl.textContent='Could not resolve link: ' + e.message;
     }
