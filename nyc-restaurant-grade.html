@@ -54,7 +54,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.12.5</div>
+<div class="ver">v1.12.6</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -297,6 +297,7 @@ async function onMapsLink() {
 btn.addEventListener('click', search);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
+mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });
 
 // Deep link: ?q=Name (&loc=Borough) auto-fills and searches on load, so the
 // tool can be opened pre-filled from a bookmark or an iOS Shortcut.
