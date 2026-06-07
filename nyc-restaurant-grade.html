@@ -54,7 +54,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.12.0</div>
+<div class="ver">v1.12.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -177,9 +177,16 @@ async function search() {
 // Pull a place name out of a Maps URL (or any text containing one). No network.
 function nameFromUrl(url) {
   if (!url) return '';
+  const isCoord = s => /^[-\d.,\s]+$/.test(s);
   const place = url.match(/\/maps\/place\/([^/@?&"'\s]+)/);
-  if (place) return decode(place[1].replace(/\+/g, ' ')).trim();
-  try { return (new URL(url).searchParams.get('q') || '').trim(); } catch { return ''; }
+  if (place) {
+    const name = decode(place[1].replace(/\+/g, ' ')).trim();
+    return isCoord(name) ? '' : name;
+  }
+  try {
+    const q = (new URL(url).searchParams.get('q') || '').trim();
+    return isCoord(q) ? '' : q;
+  } catch { return ''; }
 }
 
 // Strip the trailing " - Google Maps" from a page title; reject empty/Google-only.
