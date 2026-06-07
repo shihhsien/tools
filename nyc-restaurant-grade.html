@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NYC Grade">
+<title>NYC Grade</title>
+<style>
+  :root { --bg:#0b0b0c; --card:#161617; --line:#2a2a2c; --text:#f4f4f5; --muted:#9b9ba1; --A:#16a34a; --B:#ca8a04; --C:#dc2626; --gray:#52525b; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 60px; }
+  h1 { font-size: 18px; margin: 4px 0 2px; }
+  .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .row { display: flex; gap: 8px; }
+  input { flex: 1; padding: 13px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
+  input::placeholder { color: var(--muted); }
+  #loc { flex: 0 0 130px; }
+  button { padding: 13px 18px; font-size: 16px; font-weight: 600; border: none; border-radius: 10px; background: #fff; color: #000; }
+  button:active { opacity: .7; }
+  .status { font-size: 13px; color: var(--muted); margin: 14px 2px; }
+  .status.err { color: #f87171; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
+  .top { display: flex; gap: 12px; align-items: center; }
+  .grade { flex: 0 0 auto; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 10px; font-weight: 700; font-size: 26px; color: #fff; }
+  .grade.A{background:var(--A)} .grade.B{background:var(--B)} .grade.C{background:var(--C)} .grade.other{background:var(--gray);font-size:15px}
+  .name { font-weight: 600; font-size: 16px; }
+  .addr { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .detail { font-size: 13px; margin-top: 10px; line-height: 1.45; }
+  .detail b { font-weight: 600; }
+  .viol { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .pending { color: var(--B); }
+</style>
+</head>
+<body>
+<h1>NYC Restaurant Grade</h1>
+<div class="sub">Official NYC Health Dept data (DOHMH). Name + optional location (street, borough, or ZIP — not neighborhood).</div>
+<div class="row">
+  <input id="q" placeholder="Restaurant name" autocapitalize="characters" autocomplete="off">
+  <input id="loc" placeholder="Street / boro / ZIP" autocapitalize="words" autocomplete="off">
+</div>
+<div class="row" style="margin-top:8px">
+  <button id="go" style="flex:1">Look up grade</button>
+</div>
+<div id="status" class="status"></div>
+<div id="results"></div>
+
+<script>
+const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
+const PROXY = "https://corsproxy.io/?url=";
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+const btn = document.getElementById('go');
+
+function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});}catch{return d;} }
+function gradeClass(g){ return ['A','B','C'].includes(g)?g:'other'; }
+
+function buildUrl(name, loc){
+  let where = `upper(dba) like '%${name}%'`;
+  if (loc){
+    const L = loc.toUpperCase();
+    where += ` and (upper(street) like '%${L}%' or upper(boro) like '%${L}%' or zipcode='${loc}')`;
+  }
+  const params = new URLSearchParams();
+  params.set('$select','camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,critical_flag,action');
+  params.set('$where', where);
+  params.set('$order','inspection_date DESC');
+  params.set('$limit','200');
+  return `${API}?${params.toString()}`;
+}
+
+async function getJSON(url){
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  } catch(e) {
+    const r2 = await fetch(PROXY + encodeURIComponent(url));
+    if (!r2.ok) throw new Error('HTTP '+r2.status+' (proxy)');
+    return await r2.json();
+  }
+}
+
+function render(rows, name){
+  if(!rows.length){ statusEl.className='status'; statusEl.textContent=`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`; return; }
+  const g = {};
+  for(const r of rows){
+    const id=r.camis;
+    if(!g[id]) g[id]={info:r,graded:null,latest:null};
+    const e=g[id];
+    if(!e.latest || r.inspection_date>e.latest.inspection_date) e.latest=r;
+    if(r.grade && (!e.graded || r.grade_date>e.graded.grade_date)) e.graded=r;
+  }
+  statusEl.className='status';
+  statusEl.textContent=`${Object.keys(g).length} match(es) · official data`;
+  resultsEl.innerHTML='';
+  for(const id in g){
+    const {info,graded,latest}=g[id];
+    const grade=graded?graded.grade:null;
+    const addr=`${info.building||''} ${info.street||''}, ${info.boro||''} ${info.zipcode||''}`.replace(/\s+/g,' ').trim();
+    const c=document.createElement('div'); c.className='card';
+    let gradeLine;
+    if(graded){ gradeLine=`Grade <b>${graded.grade}</b> · score ${graded.score??'—'} · graded ${fmtDate(graded.grade_date)}`; }
+    else { gradeLine=`<span class="pending">No letter grade on record yet</span> (latest score ${latest.score??'—'})`; }
+    const violLine = latest.violation_description ? `<div class="viol">Latest cited (${latest.critical_flag||''}): ${latest.violation_description}</div>` : '';
+    c.innerHTML=`
+      <div class="top">
+        <div class="grade ${gradeClass(grade)}">${grade||'?'}</div>
+        <div><div class="name">${info.dba||'Unknown'}</div><div class="addr">${addr}</div></div>
+      </div>
+      <div class="detail">${gradeLine}</div>
+      <div class="detail" style="color:var(--muted)">Last inspection: ${fmtDate(latest.inspection_date)} · ${latest.inspection_type||''}</div>
+      ${violLine}`;
+    resultsEl.appendChild(c);
+  }
+}
+
+async function search(){
+  const name=document.getElementById('q').value.trim().toUpperCase().replace(/'/g,'');
+  const loc=document.getElementById('loc').value.trim().replace(/'/g,'');
+  if(!name){ statusEl.className='status'; statusEl.textContent='Enter a restaurant name.'; return; }
+  btn.disabled=true; resultsEl.innerHTML=''; statusEl.className='status'; statusEl.textContent='Looking up official data…';
+  try{
+    const rows=await getJSON(buildUrl(name,loc));
+    render(rows,name);
+  }catch(e){
+    statusEl.className='status err';
+    statusEl.innerHTML=`Couldn't load (${e.message}). Open raw data directly: <a style="color:#60a5fa" href="${buildUrl(name,loc)}" target="_blank">view JSON</a>`;
+  }finally{ btn.disabled=false; }
+}
+
+btn.addEventListener('click',search);
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+document.getElementById('loc').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+</script>
+</body>
+</html>
