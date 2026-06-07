@@ -292,12 +292,30 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
   before showing the error. Do not remove this retry or the services will appear
   broken on first use.
 
+- **`search()` uses two name variables.** `displayName` is the user-visible string
+  (normalized, straight apostrophes). `name` is `displayName` with apostrophes
+  doubled for SoQL (`'` → `''`). Only `name` goes into `buildUrl()`; only
+  `displayName` goes into `render()` and status messages. Do not collapse them —
+  the escaped form leaking into the UI is a bug (showed as `MIA''S` in the status bar).
+
+- **Edit tool curly-quote corruption.** The Edit tool sometimes replaces straight
+  apostrophes (`'` U+0027) with curly quotes (`'`/`'` U+2018/U+2019), breaking
+  JS syntax. After any edit to `search()`, run the syntax check:
+  ```
+  node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8'); new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('OK');"
+  ```
+  To fix corrupted lines, use Python (which preserves bytes faithfully):
+  ```python
+  with open('nyc-restaurant-grade.html', 'r', encoding='utf-8') as f: html = f.read()
+  # find script tag, split into lines, fix the offending line, reassemble and write back
+  ```
+
 ---
 
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.12.3**
+Current: **v1.12.5**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -308,3 +326,5 @@ Notable versions:
 - v1.12.1 — `nameFromUrl` rejects coordinate-only strings
 - v1.12.2 — `nameFromUrl` + `cleanTitle` reject URL/query-string garbage
 - v1.12.3 — auto-retry resolver once before showing the error message
+- v1.12.4 — apostrophe handling: normalize curly quotes then escape `'`→`''` for SoQL
+- v1.12.5 — `displayName` split so escaped form never leaks into UI
