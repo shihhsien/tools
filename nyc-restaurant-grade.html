@@ -40,6 +40,9 @@
   <input id="loc" placeholder="Street / boro / ZIP" autocapitalize="words" autocomplete="off">
 </div>
 <div class="row" style="margin-top:8px">
+  <input id="maps-input" placeholder="Or paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none" style="font-size:14px">
+</div>
+<div class="row" style="margin-top:8px">
   <button id="go" style="flex:1">Look up grade</button>
 </div>
 <div id="status" class="status"></div>
@@ -132,6 +135,48 @@ async function search(){
 btn.addEventListener('click',search);
 document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
 document.getElementById('loc').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+
+async function resolveMapsLink(url) {
+  // Full URL with place name in path: /maps/place/NAME/@...
+  const placeMatch = url.match(/\/maps\/place\/([^/@?&]+)/);
+  if (placeMatch) return decodeURIComponent(placeMatch[1].replace(/\+/g,' ')).trim();
+  // Full URL with ?q= param
+  try {
+    const u = new URL(url);
+    const q = u.searchParams.get('q');
+    if (q) return q.trim();
+  } catch(e) {}
+  // Short URL (maps.app.goo.gl, goo.gl/maps, etc.) — fetch through proxy and parse
+  const res = await fetch(PROXY + encodeURIComponent(url));
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const html = await res.text();
+  // Place name embedded anywhere in the HTML as a /maps/place/NAME path
+  const embedded = html.match(/\/maps\/place\/([^/@?"\\]+)/);
+  if (embedded) return decodeURIComponent(embedded[1].replace(/\+/g,' ')).trim();
+  // Fall back to page title
+  const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
+    .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
+  if (title && !/^google/i.test(title)) return title;
+  throw new Error('Could not extract name — enter it manually');
+}
+
+const mapsInput = document.getElementById('maps-input');
+mapsInput.addEventListener('input', async function() {
+  const url = this.value.trim();
+  if (!url.startsWith('http') || !/google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return;
+  statusEl.className='status'; statusEl.textContent='Resolving Maps link…';
+  btn.disabled=true;
+  try {
+    const name = await resolveMapsLink(url);
+    document.getElementById('q').value = name;
+    this.value = '';
+    await search();
+  } catch(e) {
+    statusEl.className='status err';
+    statusEl.textContent='Could not resolve link: ' + e.message;
+    btn.disabled=false;
+  }
+});
 </script>
 </body>
 </html>
