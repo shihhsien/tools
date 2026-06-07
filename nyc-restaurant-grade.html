@@ -52,7 +52,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.5.1</div>
+<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.6.0</div>
 
 <script>
 const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
@@ -165,9 +165,25 @@ async function resolveMapsLink(url) {
   const direct = extractFromUrl(url);
   if (direct) return direct;
 
+  // Try 1: Jina.ai reader — runs headless browser, handles JS-rendered redirects
+  try {
+    const res = await fetch('https://r.jina.ai/' + url, { headers: { 'X-Return-Format': 'text' } });
+    if (res.ok) {
+      const text = await res.text();
+      const srcUrl = (text.match(/URL Source:\s*(\S+)/i)||[])[1]||'';
+      const fromSrc = extractFromUrl(srcUrl);
+      if (fromSrc) return { ...fromSrc, boro: boroFromAddr(text) };
+      const titleLine = (text.match(/^Title:\s*(.+)$/im)||[])[1]||'';
+      const titleName = titleLine.replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
+      if (titleName && !/^google/i.test(titleName) && titleName.length > 1) return { name: titleName, boro: boroFromAddr(text) };
+      const m = text.match(/\/maps\/place\/([^/@?\s\n\r"]{2,80})/i);
+      if (m) return { name: decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(), boro: boroFromAddr(text) };
+    }
+  } catch(e) {}
+
   let html = '', finalUrl = '';
 
-  // Try allorigins.win — returns status.url (the final URL after all redirects)
+  // Try 2: allorigins.win — returns status.url (the final URL after all redirects)
   try {
     const res = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
     if (res.ok) { const d = await res.json(); finalUrl = d?.status?.url || ''; html = d?.contents || ''; }
@@ -176,7 +192,7 @@ async function resolveMapsLink(url) {
   const fromFinal = extractFromUrl(finalUrl);
   if (fromFinal) return { ...fromFinal, boro: boroFromAddr(html) };
 
-  // Fallback: corsproxy.io
+  // Try 3: corsproxy.io
   if (!html) {
     try {
       const res = await fetch(PROXY + encodeURIComponent(url));
@@ -185,19 +201,15 @@ async function resolveMapsLink(url) {
   }
 
   if (html) {
-    // /maps/place/NAME — handle escaped slashes in JS strings (\/, %2F, plain /)
     const m = html.match(/maps(?:\\\/|\/|%2F)place(?:\\\/|\/|%2F)([^\\\/\?@"&<\s\n\r]{2,80})/i);
     if (m) { const n = decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(); if (n) return { name: n, boro: boroFromAddr(html) }; }
 
-    // Firebase Dynamic Link: continueUrl / ifl JS variable
     const cu = html.match(/["'](?:continueUrl|ifl|url)['"]\s*[=:]\s*["']([^"']*maps[^"']*)["']/i);
     if (cu) { const r = extractFromUrl(cu[1]); if (r) return { ...r, boro: boroFromAddr(html) }; }
 
-    // Any full google.com/maps URL in HTML (escaped or plain)
     const mu = html.match(/https?:\\?\/\\?\/(?:www\.)?google\.com\\?\/maps[^\s"'<>\n\r]{5,}/i);
     if (mu) { const r = extractFromUrl(mu[0].replace(/\\\//g,'/')); if (r) return { ...r, boro: boroFromAddr(html) }; }
 
-    // Title tag
     const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
       .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
     if (title && !/^google/i.test(title)) return { name: title, boro: boroFromAddr(html) };
