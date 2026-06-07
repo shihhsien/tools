@@ -218,7 +218,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (all 18 must pass):**
+**Required test cases (all 19 must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -240,6 +240,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 16 | All resolvers fail → error with Open link | error text + link to original URL |
 | 17 | Deep link `?q=Name&loc=Borough` | both fields pre-filled; auto-searched |
 | 18 | Borough extracted from resolver place name | `Mazzat, Brooklyn, NY` splits to name=Mazzat, loc=BROOKLYN |
+| 19 | Enter key on Maps input triggers resolution | set value, press Enter, card shown |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -315,7 +316,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.12.5**
+Current: **v1.12.6**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -328,3 +329,4 @@ Notable versions:
 - v1.12.3 — auto-retry resolver once before showing the error message
 - v1.12.4 — apostrophe handling: normalize curly quotes then escape `'`→`''` for SoQL
 - v1.12.5 — `displayName` split so escaped form never leaks into UI
+- v1.12.6 — Enter key on Maps input triggers resolution
