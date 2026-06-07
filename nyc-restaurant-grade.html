@@ -52,7 +52,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.4.0</div>
+<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.5.0</div>
 
 <script>
 const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
@@ -162,33 +162,46 @@ function boroFromAddr(addr) {
 }
 
 async function resolveMapsLink(url) {
-  // Full URL: parse directly
   const direct = extractFromUrl(url);
   if (direct) return direct;
 
-  // Short URL: use allorigins.win which returns the final URL after redirects
   let html = '', finalUrl = '';
+
+  // Try allorigins.win — returns status.url (the final URL after all redirects)
   try {
     const res = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
     if (res.ok) { const d = await res.json(); finalUrl = d?.status?.url || ''; html = d?.contents || ''; }
   } catch(e) {}
 
   const fromFinal = extractFromUrl(finalUrl);
-  if (fromFinal) return fromFinal;
+  if (fromFinal) return { ...fromFinal, boro: boroFromAddr(html) };
 
-  // Search for a /maps/place/NAME anywhere in the returned HTML
-  const embedded = html.match(/\/maps\/place\/([^/@?"\\]+)/);
-  if (embedded) return { name: decodeURIComponent(embedded[1].replace(/\+/g,' ')).trim(), boro: boroFromAddr(html) };
+  // Fallback: corsproxy.io
+  if (!html) {
+    try {
+      const res = await fetch(PROXY + encodeURIComponent(url));
+      if (res.ok) html = await res.text();
+    } catch(e) {}
+  }
 
-  // Meta-refresh redirect URL
-  const metaUrl = ((html.match(/content=["']?\d+;\s*url=([^"'>\s]+)/i)||[])[1]||'');
-  const fromMeta = extractFromUrl(decodeURIComponent(metaUrl));
-  if (fromMeta) return fromMeta;
+  if (html) {
+    // /maps/place/NAME — handle escaped slashes in JS strings (\/, %2F, plain /)
+    const m = html.match(/maps(?:\\\/|\/|%2F)place(?:\\\/|\/|%2F)([^\\\/\?@"&<\s\n\r]{2,80})/i);
+    if (m) return { name: decodeURIComponent(m[1].replace(/\+/g,' ')).trim(), boro: boroFromAddr(html) };
 
-  // Page title — also try to grab address for boro
-  const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
-    .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-  if (title && !/^google/i.test(title)) return { name: title, boro: boroFromAddr(html) };
+    // Firebase Dynamic Link: continueUrl / ifl JS variable
+    const cu = html.match(/["'](?:continueUrl|ifl|url)['"]\s*[=:]\s*["']([^"']*maps[^"']*)["']/i);
+    if (cu) { const r = extractFromUrl(cu[1]); if (r) return { ...r, boro: boroFromAddr(html) }; }
+
+    // Any full google.com/maps URL in HTML (escaped or plain)
+    const mu = html.match(/https?:\\?\/\\?\/(?:www\.)?google\.com\\?\/maps[^\s"'<>\n\r]{5,}/i);
+    if (mu) { const r = extractFromUrl(mu[0].replace(/\\\//g,'/')); if (r) return { ...r, boro: boroFromAddr(html) }; }
+
+    // Title tag
+    const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
+      .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
+    if (title && !/^google/i.test(title)) return { name: title, boro: boroFromAddr(html) };
+  }
 
   throw new Error('Could not extract name — enter it manually');
 }
