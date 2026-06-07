@@ -136,27 +136,48 @@ btn.addEventListener('click',search);
 document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
 document.getElementById('loc').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
 
+function extractFromUrl(url) {
+  if (!url) return null;
+  const m = url.match(/\/maps\/place\/([^\/@?&]+)/);
+  if (m) { const n = decodeURIComponent(m[1].replace(/\+/g,' ')).trim(); if (n) return { name: n }; }
+  try { const q = new URL(url).searchParams.get('q'); if (q && q.length > 1) return { name: q.trim() }; } catch(e) {}
+  return null;
+}
+
+function boroFromAddr(addr) {
+  const s = (addr||'').toUpperCase();
+  if (/BROOKLYN|KINGS/.test(s)) return 'BROOKLYN';
+  if (/MANHATTAN|NEW YORK, NY/.test(s)) return 'MANHATTAN';
+  if (/QUEENS/.test(s)) return 'QUEENS';
+  if (/BRONX/.test(s)) return 'BRONX';
+  if (/STATEN ISLAND|RICHMOND/.test(s)) return 'STATEN ISLAND';
+  return '';
+}
+
 async function resolveMapsLink(url) {
-  // Full URL with place name in path: /maps/place/NAME/@...
-  const placeMatch = url.match(/\/maps\/place\/([^\/@?&]+)/);
-  if (placeMatch) return decodeURIComponent(placeMatch[1].replace(/\+/g,' ')).trim();
-  // Full URL with ?q= param
+  const direct = extractFromUrl(url);
+  if (direct) return direct;
+
+  let html = '', finalUrl = '';
   try {
-    const u = new URL(url);
-    const q = u.searchParams.get('q');
-    if (q) return q.trim();
+    const res = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
+    if (res.ok) { const d = await res.json(); finalUrl = d?.status?.url || ''; html = d?.contents || ''; }
   } catch(e) {}
-  // Short URL (maps.app.goo.gl, goo.gl/maps, etc.) — fetch through proxy and parse
-  const res = await fetch(PROXY + encodeURIComponent(url));
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const html = await res.text();
-  // Place name embedded anywhere in the HTML as a /maps/place/NAME path
+
+  const fromFinal = extractFromUrl(finalUrl);
+  if (fromFinal) return fromFinal;
+
   const embedded = html.match(/\/maps\/place\/([^\/@?"\\]+)/);
-  if (embedded) return decodeURIComponent(embedded[1].replace(/\+/g,' ')).trim();
-  // Fall back to page title
+  if (embedded) return { name: decodeURIComponent(embedded[1].replace(/\+/g,' ')).trim(), boro: boroFromAddr(html) };
+
+  const metaUrl = ((html.match(/content=["']?\d+;\s*url=([^"'>\s]+)/i)||[])[1]||'');
+  const fromMeta = extractFromUrl(decodeURIComponent(metaUrl));
+  if (fromMeta) return fromMeta;
+
   const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
     .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-  if (title && !/^google/i.test(title)) return title;
+  if (title && !/^google/i.test(title)) return { name: title, boro: boroFromAddr(html) };
+
   throw new Error('Could not extract name — enter it manually');
 }
 
@@ -167,8 +188,9 @@ mapsInput.addEventListener('input', async function() {
   statusEl.className='status'; statusEl.textContent='Resolving Maps link…';
   btn.disabled=true;
   try {
-    const name = await resolveMapsLink(url);
-    document.getElementById('q').value = name;
+    const result = await resolveMapsLink(url);
+    document.getElementById('q').value = result.name || result;
+    if (result.boro) document.getElementById('loc').value = result.boro;
     this.value = '';
     await search();
   } catch(e) {
