@@ -52,7 +52,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.8.0</div>
+<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.8.1</div>
 
 <script>
 const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
@@ -219,8 +219,17 @@ mapsInput.addEventListener('input', async function() {
   btn.disabled=true;
   try {
     const result = await resolveMapsLink(url);
-    document.getElementById('q').value = result.name || result;
-    if (result.boro) document.getElementById('loc').value = result.boro;
+    let name = result.name || result;
+    let boro = result.boro || '';
+    // Resolvers sometimes return "Name, 123 St, Brooklyn, NY" — keep only the
+    // business name (before the first comma) and mine the rest for the borough.
+    if (typeof name === 'string' && name.includes(',')) {
+      const parts = name.split(',');
+      name = parts[0].trim();
+      if (!boro) boro = boroFromAddr(parts.slice(1).join(','));
+    }
+    document.getElementById('q').value = name;
+    if (boro) document.getElementById('loc').value = boro;
     this.value = '';
     await search();
   } catch(e) {
