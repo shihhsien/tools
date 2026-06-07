@@ -55,8 +55,10 @@ server-side. Three resolvers race via `Promise.any` with a 6 s timeout:
 3. `viaJina` → `r.jina.ai/URL`
    Headless browser. Returns plain text with `URL Source:` and `Title:` lines.
 
-If all three fail, show a "Short Maps links can't be expanded here — Open it ↗"
-message with a tappable link.
+If all three fail, the app **automatically retries once** (these are serverless
+services — first request often hits a cold-start timeout; the retry hits a warm
+instance). If the retry also fails, show a "Short Maps links can't be expanded
+here — Open it ↗" message with a tappable link.
 
 ### Name extraction pipeline
 
@@ -71,7 +73,12 @@ splitPlace(name, boro)    — splits "Name, 123 St, Brooklyn" on first comma;
 { name, boro }            — name → #q input, boro → #loc input
 ```
 
-`cleanTitle(raw)` strips " - Google Maps" suffix and rejects empty / Google-only strings.
+`cleanTitle(raw)` strips " - Google Maps" suffix and rejects empty, Google-only,
+URL-like (`http…`), or query-string-like (`?`/`=`/`&`) strings.
+`nameFromUrl` applies the same validity check to both the `/maps/place/` and `?q=`
+extracted values — rejects coordinates (no letters), URL fragments, and short codes
+containing query chars. This prevents resolver garbage (raw short codes, expanded
+coordinate URLs, tracking params like `?g_st=ic`) from leaking into the name field.
 `boroFromAddr(text)` regex-matches Brooklyn/Kings, Manhattan/New York NY, Queens, Bronx,
 Staten Island/Richmond from any free-form address string.
 
@@ -79,13 +86,6 @@ Staten Island/Richmond from any free-form address string.
 
 `?q=Name&loc=Borough` on the page URL auto-fills and searches on load.
 Used by the iOS Shortcut recipe to bypass the short-link problem entirely.
-
-### Paste button
-
-Uses `prompt()` (not `navigator.clipboard`) — synchronous, works on iOS
-Safari without a clipboard permission grant. The Clipboard API fails on iOS
-because the permission check is async and the user-gesture window has
-already expired by the time the Promise resolves.
 
 ---
 
@@ -101,7 +101,7 @@ The `<script>` is organised into labelled sections:
 | Rendering | `groupByRestaurant`, `cardHtml`, `render` |
 | Search | `search` |
 | Maps parsing | `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
-| Wiring | event listeners, deep-link init on load |
+| Wiring | `onMapsLink` (with auto-retry), event listeners, deep-link init on load |
 
 ---
 
@@ -217,11 +217,9 @@ await page.goto(BASE, { waitUntil: 'load' });
 ```
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
-Test dialog (Paste button) with `page.once('dialog', d => d.accept('...'))`
-before clicking.
 
 Always test: version footer, no JS errors on load, core search flow,
-resolver success + fallback paths, deep-link auto-search.
+resolver success + fallback paths (including the auto-retry path), deep-link auto-search.
 
 ---
 
@@ -251,15 +249,30 @@ resolver success + fallback paths, deep-link auto-search.
   `[^/@?&"'\s]+` stops at `@`; `.replace(/@.*$/, '')` is also applied in
   some paths. Do not remove these guards.
 
+- **Name extraction rejects garbage strings.** Both `nameFromUrl` and `cleanTitle`
+  validate extracted values with `isName`: must contain a letter, must not contain
+  `?`/`=`/`&`, must not start with `http`. This prevents coordinates, raw short
+  codes (`qMJfabamuYZjqp4W8?g_st=ic`), and unexpanded URLs from reaching the
+  name field.
+
+- **Resolvers have cold-start latency.** The first request to mapu/microlink/jina
+  often times out (serverless spin-up). `onMapsLink` retries once automatically
+  before showing the error. Do not remove this retry or the services will appear
+  broken on first use.
+
 ---
 
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.11.0**
+Current: **v1.12.3**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
 - v1.10.0 — deep-link `?q=` support + Paste button
 - v1.10.1 — switched Paste from Clipboard API to `prompt()` (iOS fix)
 - v1.11.0 — added `mapu.retiolus.net` as primary resolver
+- v1.12.0 — removed redundant Paste button (plain input field works fine on iOS)
+- v1.12.1 — `nameFromUrl` rejects coordinate-only strings
+- v1.12.2 — `nameFromUrl` + `cleanTitle` reject URL/query-string garbage
+- v1.12.3 — auto-retry resolver once before showing the error message
