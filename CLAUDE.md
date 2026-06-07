@@ -218,8 +218,40 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-Always test: version footer, no JS errors on load, core search flow,
-resolver success + fallback paths (including the auto-retry path), deep-link auto-search.
+**Required test cases (all 18 must pass):**
+
+| # | What | Key assertion |
+|---|------|---------------|
+| 1 | Version footer | `.ver` text === `vX.Y.Z` |
+| 2 | No JS errors on bare load | `pageerror` events = 0 |
+| 3 | Empty search guard | status includes "Enter a restaurant name" |
+| 4 | Basic search — card, name, grade, status | `.name`, `.grade`, "1 match" in status |
+| 5 | No results | status includes "No active record" |
+| 6 | Apostrophe SoQL escaping + display | captured URL has `MIA''S`; display/status has no `''` |
+| 7 | Smart quote (U+2019) normalized | captured URL has `MIA''S` |
+| 8 | Full Maps URL `/maps/place/` — no resolver calls | resolver routes never hit; `#q` filled; card shown |
+| 9 | Full Maps URL `?q=` — no resolver calls | `#q` filled; card shown |
+| 10 | Coordinate URL (`?q=51.175…`) rejected | DOHMH not called; error with Open link |
+| 11 | Query-string garbage (`qMJf…?g_st=ic`) rejected | DOHMH not called; error with Open link |
+| 12 | Short link: viaMapu success | mock mapu → card shown |
+| 13 | Short link: viaMicrolink success | mock microlink → card shown |
+| 14 | Short link: viaJina success | mock jina text → card shown |
+| 15 | Auto-retry on cold start | mapu called twice; card shown on 2nd attempt |
+| 16 | All resolvers fail → error with Open link | error text + link to original URL |
+| 17 | Deep link `?q=Name&loc=Borough` | both fields pre-filled; auto-searched |
+| 18 | Borough extracted from resolver place name | `Mazzat, Brooklyn, NY` splits to name=Mazzat, loc=BROOKLYN |
+
+**Mocking notes:**
+- `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
+- `J(rows)` for DOHMH JSON responses
+- `TX(text)` for Jina plain-text responses
+- For auto-retry (test 15): track `mapuCalls` counter; return 503 on call 1, success on call 2
+- For deep-link tests (test 17): pass `pageUrl = BASE + '?q=Name&loc=Borough'` to the test runner
+
+**Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
+```js
+node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8'); new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('OK');"
+```
 
 ---
 
