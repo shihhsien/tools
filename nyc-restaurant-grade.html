@@ -54,7 +54,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.12.1</div>
+<div class="ver">v1.12.2</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -177,22 +177,23 @@ async function search() {
 // Pull a place name out of a Maps URL (or any text containing one). No network.
 function nameFromUrl(url) {
   if (!url) return '';
-  const isCoord = s => /^[-\d.,\s]+$/.test(s);
+  // Reject coordinates, URL strings, and query-param-looking values.
+  const isName = s => s.length > 1 && /[a-zA-Z]/.test(s) && !/[?=&]/.test(s) && !/^https?:\/\//i.test(s);
   const place = url.match(/\/maps\/place\/([^/@?&"'\s]+)/);
   if (place) {
     const name = decode(place[1].replace(/\+/g, ' ')).trim();
-    return isCoord(name) ? '' : name;
+    return isName(name) ? name : '';
   }
   try {
     const q = (new URL(url).searchParams.get('q') || '').trim();
-    return isCoord(q) ? '' : q;
+    return isName(q) ? q : '';
   } catch { return ''; }
 }
 
-// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only.
+// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL strings.
 function cleanTitle(raw) {
   const name = (raw || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i, '').trim();
-  return name.length > 1 && !/^google/i.test(name) ? name : '';
+  return name.length > 1 && !/^google/i.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
 }
 
 // Guess the NYC borough from an address string (used to prefill location).
