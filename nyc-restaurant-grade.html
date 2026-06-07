@@ -187,7 +187,7 @@ async function resolveMapsLink(url) {
   if (html) {
     // /maps/place/NAME — handle escaped slashes in JS strings (\/, %2F, plain /)
     const m = html.match(/maps(?:\\\/|\/|%2F)place(?:\\\/|\/|%2F)([^\\\/\?@"&<\s\n\r]{2,80})/i);
-    if (m) return { name: decodeURIComponent(m[1].replace(/\+/g,' ')).trim(), boro: boroFromAddr(html) };
+    if (m) { const n = decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(); if (n) return { name: n, boro: boroFromAddr(html) }; }
 
     // Firebase Dynamic Link: continueUrl / ifl JS variable
     const cu = html.match(/["'](?:continueUrl|ifl|url)['"]\s*[=:]\s*["']([^"']*maps[^"']*)["']/i);
