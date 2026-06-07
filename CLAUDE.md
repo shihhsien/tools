@@ -82,6 +82,19 @@ coordinate URLs, tracking params like `?g_st=ic`) from leaking into the name fie
 `boroFromAddr(text)` regex-matches Brooklyn/Kings, Manhattan/New York NY, Queens, Bronx,
 Staten Island/Richmond from any free-form address string.
 
+### Progressive name fallback
+
+When the DOHMH query returns 0 results, `search()` automatically retries with
+one fewer word (dropping the last), repeating until it finds results or reaches
+a single-word query. If the single-word query also returns 0, the "No active
+record" message is shown for the last (shortest) name tried.
+
+When the fallback fires and finds results, the status shows:
+`N match(es) · official data · shortened from "ORIGINAL NAME"`
+
+This solves the Google Maps vs. DOHMH naming mismatch: Maps often appends a
+cuisine type ("Oita Sushi") while DOHMH has only the trading name ("OITA").
+
 ### Deep-link support
 
 `?q=Name&loc=Borough` on the page URL auto-fills and searches on load.
@@ -231,7 +244,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 7 | Smart quote (U+2019) normalized | captured URL has `MIA''S` |
 | 8 | Full Maps URL `/maps/place/` — no resolver calls | resolver routes never hit; `#q` filled; card shown |
 | 9 | Full Maps URL `?q=` — no resolver calls | `#q` filled; card shown |
-| 10 | Coordinate URL (`?q=51.175…`) rejected | DOHMH not called; error with Open link |
+| 10 | Coordinate URL (`?q=40.7580,-73.9855` — no letters) rejected | DOHMH not called; error with Open link |
 | 11 | Query-string garbage (`qMJf…?g_st=ic`) rejected | DOHMH not called; error with Open link |
 | 12 | Short link: viaMapu success | mock mapu → card shown |
 | 13 | Short link: viaMicrolink success | mock microlink → card shown |
@@ -288,6 +301,13 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
   codes (`qMJfabamuYZjqp4W8?g_st=ic`), and unexpanded URLs from reaching the
   name field.
 
+- **`isName` requires a letter — zoom-level `z` is a letter.** The test for
+  test 10 (coordinate URL rejection) must use a coordinate string with no letters.
+  `?q=40.7580,-73.9855` passes (no letters). `?q=51.175806,0.4,12z` FAILS the test
+  because the zoom suffix `12z` contains `z`, making `isName` return `true`, which
+  causes a search to fire with the coordinate string as the name.
+  Use `?q=lat,lng` without a zoom level in test 10.
+
 - **Resolvers have cold-start latency.** The first request to mapu/microlink/jina
   often times out (serverless spin-up). `onMapsLink` retries once automatically
   before showing the error. Do not remove this retry or the services will appear
@@ -316,7 +336,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.12.6**
+Current: **v1.12.7**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -330,3 +350,4 @@ Notable versions:
 - v1.12.4 — apostrophe handling: normalize curly quotes then escape `'`→`''` for SoQL
 - v1.12.5 — `displayName` split so escaped form never leaks into UI
 - v1.12.6 — Enter key on Maps input triggers resolution
+- v1.12.7 — progressive word-drop fallback: if no results, retry with one fewer word until a match is found or the name is exhausted; status shows "shortened from ORIGINAL" when fallback fires

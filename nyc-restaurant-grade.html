@@ -54,7 +54,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.12.6</div>
+<div class="ver">v1.12.7</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -145,31 +145,44 @@ function cardHtml({ info, graded, latest }) {
     </div>`;
 }
 
-function render(rows, name) {
+function render(rows, name, originalName) {
   const groups = groupByRestaurant(rows);
   if (!groups.length) {
     setStatus(`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`);
     return;
   }
-  setStatus(`${groups.length} match(es) · official data`);
+  const note = originalName ? ` · shortened from "${originalName}"` : '';
+  setStatus(`${groups.length} match(es) · official data${note}`);
   resultsEl.innerHTML = groups.map(cardHtml).join('');
 }
 
 // ---- Search -----------------------------------------------------------
 async function search() {
   const normalize = s => s.replace(/[‘’′]/g, "'");
-  const displayName = normalize(nameInput.value.trim()).toUpperCase();
-  const name = displayName.replace(/'/g, "''");   // SoQL escaping
+  const originalDisplay = normalize(nameInput.value.trim()).toUpperCase();
   const loc  = normalize(locInput.value.trim()).replace(/'/g, "''");
-  if (!displayName) return setStatus('Enter a restaurant name.');
+  if (!originalDisplay) return setStatus('Enter a restaurant name.');
 
   btn.disabled = true;
   resultsEl.innerHTML = '';
-  setStatus('Looking up official data…');
+
+  const words = originalDisplay.split(' ');
+  let lastUrl = '';
   try {
-    render(await getJSON(buildUrl(name, loc)), displayName);
+    for (let len = words.length; len >= 1; len--) {
+      const displayName = words.slice(0, len).join(' ');
+      const name = displayName.replace(/'/g, "''");
+      setStatus(len < words.length ? `Trying "${displayName}"…` : 'Looking up official data…');
+      lastUrl = buildUrl(name, loc);
+      const rows = await getJSON(lastUrl);
+      const groups = groupByRestaurant(rows);
+      if (groups.length > 0 || len === 1) {
+        render(rows, displayName, len < words.length ? originalDisplay : null);
+        return;
+      }
+    }
   } catch (e) {
-    setError(`Couldn't load (${e.message}). Open raw data directly: <a href="${buildUrl(name, loc)}" target="_blank">view JSON</a>`);
+    setError(`Couldn't load (${e.message}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
   } finally {
     btn.disabled = false;
   }
