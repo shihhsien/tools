@@ -54,7 +54,7 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.12.4</div>
+<div class="ver">v1.12.5</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -157,16 +157,17 @@ function render(rows, name) {
 
 // ---- Search -----------------------------------------------------------
 async function search() {
-  const normalize = s => s.replace(/[‘’′]/g, "'");
-  const name = normalize(nameInput.value.trim()).toUpperCase().replace(/'/g, "''");
-  const loc  = normalize(locInput.value.trim()).replace(/'/g, "''");
-  if (!name) return setStatus('Enter a restaurant name.');
+  const normalize = s => s.replace(/[‘’′]/g, "’");
+  const displayName = normalize(nameInput.value.trim()).toUpperCase();
+  const name = displayName.replace(/’/g, "’’");   // SoQL escaping
+  const loc  = normalize(locInput.value.trim()).replace(/’/g, "’’");
+  if (!displayName) return setStatus(‘Enter a restaurant name.’);
 
   btn.disabled = true;
-  resultsEl.innerHTML = '';
-  setStatus('Looking up official data…');
+  resultsEl.innerHTML = ‘’;
+  setStatus(‘Looking up official data…’);
   try {
-    render(await getJSON(buildUrl(name, loc)), name);
+    render(await getJSON(buildUrl(name, loc)), displayName);
   } catch (e) {
     setError(`Couldn't load (${e.message}). Open raw data directly: <a href="${buildUrl(name, loc)}" target="_blank">view JSON</a>`);
   } finally {
