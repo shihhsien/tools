@@ -157,15 +157,15 @@ function render(rows, name) {
 
 // ---- Search -----------------------------------------------------------
 async function search() {
-  const normalize = s => s.replace(/[‘’′]/g, "’");
+  const normalize = s => s.replace(/[‘’′]/g, "'");
   const displayName = normalize(nameInput.value.trim()).toUpperCase();
-  const name = displayName.replace(/’/g, "’’");   // SoQL escaping
-  const loc  = normalize(locInput.value.trim()).replace(/’/g, "’’");
-  if (!displayName) return setStatus(‘Enter a restaurant name.’);
+  const name = displayName.replace(/'/g, "''");   // SoQL escaping
+  const loc  = normalize(locInput.value.trim()).replace(/'/g, "''");
+  if (!displayName) return setStatus('Enter a restaurant name.');
 
   btn.disabled = true;
-  resultsEl.innerHTML = ‘’;
-  setStatus(‘Looking up official data…’);
+  resultsEl.innerHTML = '';
+  setStatus('Looking up official data…');
   try {
     render(await getJSON(buildUrl(name, loc)), displayName);
   } catch (e) {
