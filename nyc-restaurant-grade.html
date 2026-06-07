@@ -24,6 +24,7 @@
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; }
   button:active { opacity: .7; }
+  .paste { width: auto; margin-top: 0; padding: 0 16px; font-size: 14px; background: var(--card); color: var(--text); border: 1px solid var(--line); }
   .status { font-size: 13px; color: var(--muted); margin: 14px 2px; }
   .status.err { color: #f87171; }
   .muted { color: var(--muted); }
@@ -47,12 +48,15 @@
 <div class="row"><input id="q" placeholder="Restaurant name" autocapitalize="characters" autocomplete="off"></div>
 <div class="row"><input id="loc" placeholder="Street, borough, or ZIP (optional)" autocapitalize="words" autocomplete="off"></div>
 <div class="divider"><span>or paste a link</span></div>
-<div class="row"><input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none"></div>
+<div class="row">
+  <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
+  <button id="paste" class="paste" type="button">Paste</button>
+</div>
 
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div class="ver">v1.9.0</div>
+<div class="ver">v1.10.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -63,6 +67,7 @@ const MAPS_HOSTS = /google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i;
 const nameInput = document.getElementById('q');
 const locInput  = document.getElementById('loc');
 const mapsInput = document.getElementById('maps-input');
+const pasteBtn  = document.getElementById('paste');
 const statusEl  = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const btn       = document.getElementById('go');
@@ -267,9 +272,30 @@ async function onMapsLink() {
   }
 }
 
+// Read the clipboard (needs the button tap as the user gesture) and resolve it.
+async function pasteLink() {
+  let text = '';
+  try { text = (await navigator.clipboard.readText() || '').trim(); }
+  catch { return setError('Clipboard blocked — paste the link manually instead.'); }
+  if (!text) return setStatus('Clipboard is empty.');
+  mapsInput.value = text;
+  if (!MAPS_HOSTS.test(text)) return setError("That doesn't look like a Google Maps link.");
+  await onMapsLink();
+}
+
 btn.addEventListener('click', search);
+pasteBtn.addEventListener('click', pasteLink);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
+
+// Deep link: ?q=Name (&loc=Borough) auto-fills and searches on load, so the
+// tool can be opened pre-filled from a bookmark or an iOS Shortcut.
+const qs = new URLSearchParams(location.search);
+if (qs.get('q')) {
+  nameInput.value = qs.get('q');
+  if (qs.get('loc')) locInput.value = qs.get('loc');
+  search();
+}
 </script>
 </body>
 </html>
