@@ -1,0 +1,29 @@
+<!-- @dsCard group="Brand" viewport="700x200" name="Favicon & app icon" subtitle="The blue A mark — favicon (16/32/48), iOS touch icon, PWA tile" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-primary); padding: 26px; }
+  .row { display: flex; align-items: flex-end; gap: 30px; flex-wrap: wrap; }
+  .item { text-align: center; }
+  .item img { display: block; image-rendering: -webkit-optimize-contrast; }
+  /* browser-chrome mock */
+  .tab { display: flex; align-items: center; gap: 8px; background: var(--surface-card); border: 1px solid var(--border-default); border-radius: 9px 9px 0 0; padding: 9px 14px; font-size: 13px; color: var(--text-secondary); }
+  .tag { color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="item">
+      <div class="tab"><img src="../assets/favicon-32.png" width="16" height="16" alt=""> NYC Restaurant Grade</div>
+      <div class="tag">browser tab · 16px</div>
+    </div>
+    <div class="item"><img src="../assets/favicon-32.png" width="32" height="32" alt=""><div class="tag">32px</div></div>
+    <div class="item"><img src="../assets/favicon-48.png" width="48" height="48" alt=""><div class="tag">48px</div></div>
+    <div class="item"><img src="../assets/favicon-180.png" width="60" height="60" style="border-radius:13px" alt=""><div class="tag">iOS touch · 180</div></div>
+    <div class="item"><img src="../assets/favicon-512.png" width="72" height="72" style="border-radius:16px" alt=""><div class="tag">PWA · 512</div></div>
+  </div>
+</body>
+</html>

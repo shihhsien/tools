@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Grade scale" subtitle="Authentic NYC placard colors — blue A · green B · orange C · grey pending" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); padding: 20px; }
+  .row { display: flex; gap: 16px; }
+  .sw { flex: 1; text-align: center; }
+  .grade { width: 100%; height: 64px; line-height: 64px; border-radius: var(--radius-md); font-weight: var(--weight-bold); font-size: var(--text-grade); color: var(--text-on-grade); }
+  .grade.na { font-size: 15px; }
+  .name { color: var(--text-primary); font-size: 12px; font-weight: 600; margin-top: 8px; }
+  .hex { color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="grade" style="background:var(--grade-a)">A</div><div class="name">A · 0–13 pts</div><div class="hex">#1f57a6</div></div>
+    <div class="sw"><div class="grade" style="background:var(--grade-b)">B</div><div class="name">B · 14–27</div><div class="hex">#2f8b4e</div></div>
+    <div class="sw"><div class="grade" style="background:var(--grade-c)">C</div><div class="name">C · 28+</div><div class="hex">#e07d2a</div></div>
+    <div class="sw"><div class="grade na" style="background:var(--grade-na)">N/A</div><div class="name">pending</div><div class="hex">#52525b</div></div>
+  </div>
+</body>
+</html>

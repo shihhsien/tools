@@ -1,0 +1,26 @@
+<!-- @dsCard group="Brand" viewport="700x190" name="Voice & microcopy" subtitle="Calm civic utility — states facts, owns limits, gives the next step" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); padding: 22px; color: var(--text-primary); }
+  .grid { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; align-items: baseline; }
+  .k { color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); }
+  .v { font-size: 13px; line-height: 1.45; }
+  .muted { color: var(--text-secondary); }
+  .err { color: var(--text-error); }
+  a { color: var(--text-link); text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="k">status</div><div class="v">1 match · official data</div>
+    <div class="k">narration</div><div class="v muted">Trying "Oita"… · Resolving Maps link…</div>
+    <div class="k">fallback</div><div class="v muted">2 matches · shortened from "OITA SUSHI"</div>
+    <div class="k">no result</div><div class="v">No active record for "Xyz". Try a shorter name, drop the location, or check spelling.</div>
+    <div class="k">error</div><div class="v err">Couldn't find a restaurant name in this link. <a href="#">Open it ↗</a></div>
+  </div>
+</body>
+</html>

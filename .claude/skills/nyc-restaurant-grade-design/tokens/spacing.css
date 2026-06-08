@@ -1,0 +1,42 @@
+/* ============================================================
+   SPACING, RADII, SIZING — NYC Restaurant Grade
+   Tight, mobile-first rhythm. Values lifted from the app.
+   ============================================================ */
+
+:root {
+  /* ---- Spacing scale ------------------------------------- */
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  6px;
+  --space-4:  8px;   /* row gap */
+  --space-5:  10px;
+  --space-6:  12px;  /* card-to-card, field padding-y partner */
+  --space-7:  14px;  /* card padding, input padding */
+  --space-8:  16px;  /* page padding, section rhythm */
+  --space-9:  18px;
+  --space-10: 24px;
+
+  /* ---- Radii --------------------------------------------- */
+  --radius-sm:   8px;  /* debug panel */
+  --radius-md:   10px; /* grade chip */
+  --radius-lg:   12px; /* inputs, buttons */
+  --radius-xl:   14px; /* result cards */
+  --radius-pill: 999px;
+
+  /* ---- Layout -------------------------------------------- */
+  --layout-max:  600px; /* app content max width (mobile-first) */
+  --grade-size:  48px;  /* the square grade chip */
+  --tap-target:  44px;  /* minimum touch target */
+
+  /* ---- Borders ------------------------------------------- */
+  --border-width: 1px;  /* the system is built on crisp 1px hairlines */
+
+  /* ---- Elevation ----------------------------------------------
+     The app is intentionally FLAT — depth is communicated by the
+     1px border + the card fill being lighter than the page, not by
+     drop shadows. These are provided only for overlays/menus that
+     the base app never needed.
+     ------------------------------------------------------------ */
+  --shadow-none:    none;
+  --shadow-overlay: 0 8px 28px rgba(0, 0, 0, 0.55);
+}

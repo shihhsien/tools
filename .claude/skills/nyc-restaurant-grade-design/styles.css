@@ -1,0 +1,9 @@
+/* ============================================================
+   NYC Restaurant Grade — Design System
+   Global entry point. Consumers link THIS file only.
+   Keep this file as @import lines only — no inline rules.
+   ============================================================ */
+
+@import "tokens/colors.css";
+@import "tokens/typography.css";
+@import "tokens/spacing.css";

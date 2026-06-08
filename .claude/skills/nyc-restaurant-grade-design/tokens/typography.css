@@ -1,0 +1,36 @@
+/* ============================================================
+   TYPOGRAPHY — NYC Restaurant Grade
+   The app uses the native system UI stack (no webfonts) for a
+   crisp, iOS-native feel. Mono is reserved for the debug trace.
+   ============================================================ */
+
+:root {
+  /* ---- Families ------------------------------------------ */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* ---- Weights ------------------------------------------- */
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600; /* labels, names, button text */
+  --weight-bold:    700; /* grade letters */
+
+  /* ---- Type scale (px values used verbatim in the app) --- */
+  --text-grade:   26px; /* the big grade letter */
+  --text-title:   20px; /* h1 page title */
+  --text-button:  17px; /* primary button label */
+  --text-input:   16px; /* form fields (16px prevents iOS zoom) */
+  --text-name:    16px; /* result restaurant name */
+  --text-body:    13px; /* detail rows, status, address */
+  --text-small:   12px; /* page subtitle, violation note */
+  --text-eyebrow: 11px; /* uppercase divider label, version footer */
+
+  /* ---- Line heights -------------------------------------- */
+  --leading-tight:  1.2;
+  --leading-snug:   1.45;
+  --leading-normal: 1.5;
+  --leading-loose:  1.6;
+
+  /* ---- Letter spacing ------------------------------------ */
+  --tracking-eyebrow: 0.06em; /* uppercase divider / labels */
+}

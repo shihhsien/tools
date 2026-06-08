@@ -1,0 +1,22 @@
+<!-- @dsCard group="Type" viewport="700x150" name="Grade letter & families" subtitle="The 26/700 grade glyph; sans for UI, mono for the debug trace" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); padding: 20px; color: var(--text-primary); display:flex; gap:24px; align-items:center; }
+  .glyph { width: var(--grade-size); height: var(--grade-size); line-height: var(--grade-size); text-align:center; border-radius: var(--radius-md); background: var(--grade-pass); color: var(--text-on-grade); font-weight: var(--weight-bold); font-size: var(--text-grade); }
+  .fam { flex:1; }
+  .fam + .fam { border-left: 1px solid var(--border-default); padding-left: 24px; }
+  .ftag { color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); margin-bottom: 6px; }
+  .sans { font-family: var(--font-sans); font-size: 15px; }
+  .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+  <div style="text-align:center"><div class="glyph">A</div><div class="ftag" style="margin-top:8px">grade · 26/700</div></div>
+  <div class="fam"><div class="ftag">--font-sans</div><div class="sans">The quick brown fox · 0123456789</div></div>
+  <div class="fam"><div class="ftag">--font-mono</div><div class="mono">12:04:51 viaMapu: HTTP 200 ✓</div></div>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!-- @dsCard group="Brand" viewport="700x360" name="Logomark & lockups" subtitle="The grade chip as the brand mark — icon, horizontal & stacked lockups" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); color: var(--text-primary); padding: 26px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .cell { border: 1px solid var(--border-default); border-radius: var(--radius-xl); padding: 22px; display: flex; align-items: center; justify-content: center; min-height: 120px; }
+  .cap { grid-column: 1 / -1; font-size: 11px; font-family: var(--font-mono); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .06em; margin: 2px 0 -10px; }
+
+  /* ---- the mark ---- */
+  .chip { display:flex; align-items:center; justify-content:center; background: var(--grade-pass); color: var(--text-on-grade); font-weight: var(--weight-bold); border-radius: var(--radius-md); }
+  .chip.lg { width: 64px; height: 64px; font-size: 36px; border-radius: 14px; }
+  .chip.md { width: 40px; height: 40px; font-size: 23px; }
+  .chip.sm { width: 28px; height: 28px; font-size: 16px; border-radius: 7px; }
+
+  /* ---- lockups ---- */
+  .lockup-h { display: flex; align-items: center; gap: 12px; }
+  .lockup-v { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .wordmark { font-weight: var(--weight-semibold); letter-spacing: -0.01em; line-height: 1.05; }
+  .wordmark .nyc { color: var(--text-primary); }
+  .wordmark .rg { color: var(--text-secondary); }
+  .h-word { font-size: 20px; }
+  .v-word { font-size: 17px; text-align: center; }
+
+  /* ---- app icon ---- */
+  .appicon { width: 92px; height: 92px; border-radius: 21px; background: var(--surface-card); border: 1px solid var(--border-default); display:flex; align-items:center; justify-content:center; }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="cap">primary lockup — horizontal</div>
+    <div class="cell">
+      <div class="lockup-h">
+        <div class="chip md">A</div>
+        <div class="wordmark h-word"><span class="nyc">NYC Restaurant</span> <span class="rg">Grade</span></div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="lockup-v">
+        <div class="chip lg">A</div>
+        <div class="wordmark v-word"><span class="nyc">NYC Restaurant</span><br><span class="rg">Grade</span></div>
+      </div>
+    </div>
+
+    <div class="cap">mark alone · app icon · favicon</div>
+    <div class="cell" style="gap:28px;justify-content:space-around">
+      <div class="appicon"><div class="chip lg">A</div></div>
+      <div class="chip md">A</div>
+      <div class="chip sm">A</div>
+    </div>
+
+    <div class="cell" style="gap:14px">
+      <div class="chip md" style="background:var(--grade-pass)">A</div>
+      <div class="chip md" style="background:var(--grade-caution)">B</div>
+      <div class="chip md" style="background:var(--grade-fail)">C</div>
+    </div>
+  </div>
+</body>
+</html>

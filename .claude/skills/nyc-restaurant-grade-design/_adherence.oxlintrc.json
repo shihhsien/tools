@@ -1,0 +1,303 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "components/core/**",
+              "ui_kits/grade-lookup/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|disabled|key|ref|className|style|children)$/]",
+        "message": "<Button> doesn't accept that prop. Declared props: children, disabled."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Card'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|key|ref|className|style|children)$/]",
+        "message": "<Card> doesn't accept that prop. Declared props: children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Divider'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|key|ref|className|style|children)$/]",
+        "message": "<Divider> doesn't accept that prop. Declared props: label."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='GradeBadge'] > JSXAttribute > JSXIdentifier[name!=/^(?:grade|soft|size|key|ref|className|style|children)$/]",
+        "message": "<GradeBadge> doesn't accept that prop. Declared props: grade, soft, size."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='GradePlacard'] > JSXAttribute > JSXIdentifier[name!=/^(?:grade|size|key|ref|className|style|children)$/]",
+        "message": "<GradePlacard> doesn't accept that prop. Declared props: grade, size."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Input'] > JSXAttribute > JSXIdentifier[name!=/^(?:variant|key|ref|className|style|children)$/]",
+        "message": "<Input> doesn't accept that prop. Declared props: variant."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Input'] > JSXAttribute[name.name='variant'] > Literal[value!=/^(?:default|accent)$/]",
+        "message": "<Input> variant must be one of 'default' | 'accent'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Logomark'] > JSXAttribute > JSXIdentifier[name!=/^(?:layout|grade|size|showWordmark|key|ref|className|style|children)$/]",
+        "message": "<Logomark> doesn't accept that prop. Declared props: layout, grade, size, showWordmark."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Logomark'] > JSXAttribute[name.name='layout'] > Literal[value!=/^(?:horizontal|stacked)$/]",
+        "message": "<Logomark> layout must be one of 'horizontal' | 'stacked'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ResultCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:grade|name|address|score|gradedDate|inspectedDate|inspectionType|violation|criticalFlag|pending|key|ref|className|style|children)$/]",
+        "message": "<ResultCard> doesn't accept that prop. Declared props: grade, name, address, score, gradedDate, inspectedDate, inspectionType, violation, criticalFlag, pending."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='StatusLine'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|children|key|ref|className|style|children)$/]",
+        "message": "<StatusLine> doesn't accept that prop. Declared props: tone, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='StatusLine'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:default|error)$/]",
+        "message": "<StatusLine> tone must be one of 'default' | 'error'."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {
+      "Button": {
+        "replaces": []
+      },
+      "Card": {
+        "replaces": []
+      },
+      "Divider": {
+        "replaces": []
+      },
+      "GradeBadge": {
+        "replaces": []
+      },
+      "GradePlacard": {
+        "replaces": []
+      },
+      "Input": {
+        "replaces": []
+      },
+      "Logomark": {
+        "replaces": []
+      },
+      "ResultCard": {
+        "replaces": []
+      },
+      "StatusLine": {
+        "replaces": []
+      }
+    },
+    "tokens": [
+      "--border-accent",
+      "--border-default",
+      "--border-width",
+      "--color-accent-bg",
+      "--color-accent-line",
+      "--color-bg",
+      "--color-card",
+      "--color-error",
+      "--color-grade-a",
+      "--color-grade-b",
+      "--color-grade-c",
+      "--color-grade-na",
+      "--color-gray",
+      "--color-ink",
+      "--color-inverse-bg",
+      "--color-inverse-ink",
+      "--color-line",
+      "--color-link",
+      "--color-muted",
+      "--color-nyc-blue",
+      "--color-nyc-blue-deep",
+      "--color-placard-paper",
+      "--color-placard-pending",
+      "--font-mono",
+      "--font-sans",
+      "--grade-a",
+      "--grade-b",
+      "--grade-c",
+      "--grade-caution",
+      "--grade-fail",
+      "--grade-na",
+      "--grade-pass",
+      "--grade-pending",
+      "--grade-size",
+      "--layout-max",
+      "--leading-loose",
+      "--leading-normal",
+      "--leading-snug",
+      "--leading-tight",
+      "--nyc-blue",
+      "--nyc-blue-deep",
+      "--placard-paper",
+      "--placard-pending",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-pill",
+      "--radius-sm",
+      "--radius-xl",
+      "--shadow-none",
+      "--shadow-overlay",
+      "--space-1",
+      "--space-10",
+      "--space-2",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-7",
+      "--space-8",
+      "--space-9",
+      "--surface-accent",
+      "--surface-card",
+      "--surface-inverse",
+      "--surface-page",
+      "--tap-target",
+      "--text-body",
+      "--text-button",
+      "--text-error",
+      "--text-eyebrow",
+      "--text-grade",
+      "--text-input",
+      "--text-inverse",
+      "--text-link",
+      "--text-name",
+      "--text-on-grade",
+      "--text-primary",
+      "--text-secondary",
+      "--text-small",
+      "--text-tertiary",
+      "--text-title",
+      "--tracking-eyebrow",
+      "--weight-bold",
+      "--weight-medium",
+      "--weight-regular",
+      "--weight-semibold"
+    ],
+    "tokenKinds": {
+      "--color-bg": "color",
+      "--color-card": "color",
+      "--color-line": "color",
+      "--color-ink": "color",
+      "--color-muted": "color",
+      "--color-gray": "color",
+      "--color-grade-a": "color",
+      "--color-grade-b": "color",
+      "--color-grade-c": "color",
+      "--color-grade-na": "color",
+      "--color-nyc-blue": "color",
+      "--color-nyc-blue-deep": "color",
+      "--color-placard-paper": "color",
+      "--color-placard-pending": "color",
+      "--color-link": "color",
+      "--color-error": "color",
+      "--color-accent-bg": "color",
+      "--color-accent-line": "color",
+      "--color-inverse-bg": "color",
+      "--color-inverse-ink": "color",
+      "--surface-page": "color",
+      "--surface-card": "color",
+      "--surface-accent": "color",
+      "--surface-inverse": "color",
+      "--text-primary": "font",
+      "--text-secondary": "font",
+      "--text-tertiary": "font",
+      "--text-link": "font",
+      "--text-error": "font",
+      "--text-inverse": "font",
+      "--text-on-grade": "font",
+      "--border-default": "color",
+      "--border-accent": "color",
+      "--grade-a": "color",
+      "--grade-b": "color",
+      "--grade-c": "color",
+      "--grade-na": "color",
+      "--grade-pass": "color",
+      "--grade-caution": "color",
+      "--grade-fail": "color",
+      "--grade-pending": "color",
+      "--nyc-blue": "color",
+      "--nyc-blue-deep": "color",
+      "--placard-paper": "color",
+      "--placard-pending": "color",
+      "--font-sans": "font",
+      "--font-mono": "font",
+      "--weight-regular": "font",
+      "--weight-medium": "font",
+      "--weight-semibold": "font",
+      "--weight-bold": "font",
+      "--text-grade": "font",
+      "--text-title": "font",
+      "--text-button": "font",
+      "--text-input": "font",
+      "--text-name": "font",
+      "--text-body": "font",
+      "--text-small": "font",
+      "--text-eyebrow": "font",
+      "--leading-tight": "font",
+      "--leading-snug": "font",
+      "--leading-normal": "font",
+      "--leading-loose": "font",
+      "--tracking-eyebrow": "font",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-7": "spacing",
+      "--space-8": "spacing",
+      "--space-9": "spacing",
+      "--space-10": "spacing",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--radius-pill": "radius",
+      "--layout-max": "spacing",
+      "--grade-size": "spacing",
+      "--tap-target": "spacing",
+      "--border-width": "spacing",
+      "--shadow-none": "shadow",
+      "--shadow-overlay": "shadow"
+    },
+    "fontFamilies": []
+  }
+}

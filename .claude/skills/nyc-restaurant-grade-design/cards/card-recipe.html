@@ -1,0 +1,28 @@
+<!-- @dsCard group="Spacing" viewport="700x180" name="Card recipe" subtitle="The single surface recipe: #161617 fill, 1px line, 14px radius, flat" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); padding: 22px; }
+  .card { background: var(--surface-card); border: var(--border-width) solid var(--border-default); border-radius: var(--radius-xl); padding: var(--space-7); display:flex; gap:12px; align-items:center; }
+  .grade { flex:0 0 auto; width: var(--grade-size); height: var(--grade-size); line-height: var(--grade-size); text-align:center; border-radius: var(--radius-md); background: var(--grade-pass); color: var(--text-on-grade); font-weight: var(--weight-bold); font-size: var(--text-grade); }
+  .name { color: var(--text-primary); font-size: var(--text-name); font-weight: var(--weight-semibold); }
+  .addr { color: var(--text-secondary); font-size: var(--text-body); margin-top: 2px; }
+  .detail { color: var(--text-primary); font-size: var(--text-body); margin-top: 10px; }
+  .note { color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); margin-top: 14px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="grade">A</div>
+    <div>
+      <div class="name">Joe's Pizza</div>
+      <div class="addr">7 Carmine St, Manhattan 10014</div>
+      <div class="detail">Grade <b>A</b> · score 12 · graded Mar 3, 2025</div>
+    </div>
+  </div>
+  <div class="note">card = #161617 · 1px #2a2a2c · radius 14 · padding 14 · no shadow</div>
+</body>
+</html>

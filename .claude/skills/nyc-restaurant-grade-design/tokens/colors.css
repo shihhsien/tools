@@ -1,0 +1,86 @@
+/* ============================================================
+   COLORS — NYC Restaurant Grade
+   Dark-first utility palette lifted verbatim from the app
+   (nyc-restaurant-grade.html :root). Base ramp + semantic aliases.
+   ============================================================ */
+
+:root {
+  /* ---- Base neutrals (dark surfaces) ---------------------- */
+  --color-bg:        #0b0b0c; /* page background, near-black */
+  --color-card:      #161617; /* raised surface / card fill */
+  --color-line:      #2a2a2c; /* hairline borders, dividers */
+  --color-ink:       #f4f4f5; /* primary text, near-white */
+  --color-muted:     #9b9ba1; /* secondary / supporting text */
+  --color-gray:      #52525b; /* tertiary text, disabled, "other" grade */
+
+  /* ---- Grade scale — AUTHENTIC NYC placard colors --------
+     Matches the real DOHMH window placards (Two Twelve, 2010):
+     blue A (0–13 pts), green B (14–27), orange C (28+), and a
+     black-and-white "grade pending". This is what New Yorkers
+     actually see in restaurant windows.
+     Legacy traffic-light values kept in comments to revert. */
+  --color-grade-a:   #1f57a6; /* A — NYC placard blue   (was #16a34a) */
+  --color-grade-b:   #2f8b4e; /* B — placard green      (was #ca8a04) */
+  --color-grade-c:   #e07d2a; /* C — placard orange     (was #dc2626) */
+  --color-grade-na:  #52525b; /* ungraded / unknown (neutral grey) */
+
+  /* ---- NYC institutional blue (the placard ink) ---------- */
+  --color-nyc-blue:  #1f57a6; /* the official grade-A / DOHMH blue */
+  --color-nyc-blue-deep: #133a73; /* darker rule / pressed */
+
+  /* ---- Placard (the real white window card) -------------- */
+  --color-placard-paper: #ffffff; /* card stock */
+  --color-placard-pending: #1a1a1a; /* b&w "grade pending" ink */
+
+  /* ---- Accents ------------------------------------------- */
+  --color-link:      #60a5fa; /* hyperlinks, blue */
+  --color-error:     #f87171; /* error status text, soft red */
+  --color-accent-bg:    #1a1a2e; /* "paste a link" field fill, indigo-tinted */
+  --color-accent-line:  #3a3a5c; /* "paste a link" field border */
+
+  /* ---- Inverse (the single light surface: the button) ---- */
+  --color-inverse-bg:  #ffffff; /* primary button fill */
+  --color-inverse-ink: #000000; /* primary button label */
+
+  /* ============================================================
+     SEMANTIC ALIASES — prefer these in components
+     ============================================================ */
+
+  /* Surfaces */
+  --surface-page:    var(--color-bg);
+  --surface-card:    var(--color-card);
+  --surface-accent:  var(--color-accent-bg);
+  --surface-inverse: var(--color-inverse-bg);
+
+  /* Text */
+  --text-primary:    var(--color-ink);
+  --text-secondary:  var(--color-muted);
+  --text-tertiary:   var(--color-gray);
+  --text-link:       var(--color-link);
+  --text-error:      var(--color-error);
+  --text-inverse:    var(--color-inverse-ink);
+  --text-on-grade:   #ffffff; /* white letter on any grade chip */
+
+  /* Borders */
+  --border-default:  var(--color-line);
+  --border-accent:   var(--color-accent-line);
+
+  /* Grade semantic map (named by letter — the NYC system isn't a
+     pass/fail traffic light; even C is a calm orange, not red) */
+  --grade-a:       var(--color-grade-a);
+  --grade-b:       var(--color-grade-b);
+  --grade-c:       var(--color-grade-c);
+  --grade-na:      var(--color-grade-na);
+
+  /* Back-compat aliases (older components referenced these) */
+  --grade-pass:    var(--color-grade-a);
+  --grade-caution: var(--color-grade-b);
+  --grade-fail:    var(--color-grade-c);
+  --grade-pending: var(--color-grade-na);
+
+  /* NYC blue + placard */
+  --nyc-blue:        var(--color-nyc-blue);
+  --nyc-blue-deep:   var(--color-nyc-blue-deep);
+  --placard-paper:   var(--color-placard-paper);
+  --placard-pending: var(--color-placard-pending);
+}
