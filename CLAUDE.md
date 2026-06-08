@@ -49,7 +49,14 @@ your head or only in the chat.
 ## Files
 
 - `nyc-restaurant-grade.html` — the entire app (HTML + CSS + JS, one file)
+- `assets/` — PWA assets: `favicon.svg`, `favicon-16/32/48/180/192/512.png`, `manifest.json`
 - `.github/workflows/pages.yml` — deploys on push to `main`
+- `.githooks/check-consistency.sh` — enforces three invariants (see below)
+- `.githooks/pre-push` — runs the consistency check before every push
+- `.claude/settings.json` — runs the consistency check at every SessionStart
+- `.claude/skills/test/` — Playwright test skill (23 cases, 70 assertions)
+- `.claude/skills/verify/` — visual screenshot verification skill
+- `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
 ## Deployment
 
@@ -57,6 +64,20 @@ Push to `main` → GitHub Actions builds → GitHub Pages serves.
 No build step. The HTML file is served as-is.
 
 Dev branch: `claude/nyc-restaurant-grade-SPLv9`
+
+## Consistency guard
+
+`.githooks/check-consistency.sh` enforces three invariants automatically:
+
+1. HTML footer `vX.Y.Z` == `Current: **vX.Y.Z**` in this file
+2. Test-case count matches across CLAUDE.md §Testing, test skill `description:`, and skill "Run the full N-case" line
+3. Assertion count matches across CLAUDE.md §Testing and skill "Expected output" line
+
+It runs in two places:
+- **Pre-push** (via `.githooks/pre-push`) — aborts the push if anything is wrong. Git uses `.githooks/` via `core.hooksPath = .githooks` (set once per clone: `git config core.hooksPath .githooks`).
+- **SessionStart** (via `.claude/settings.json`) — surfaces a warning at the top of every Claude Code session on this repo.
+
+To run manually: `bash .githooks/check-consistency.sh`
 
 ---
 
