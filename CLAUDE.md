@@ -254,6 +254,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 17 | Deep link `?q=Name&loc=Borough` | both fields pre-filled; auto-searched |
 | 18 | Borough extracted from resolver place name | `Mazzat, Brooklyn, NY` splits to name=Mazzat, loc=BROOKLYN |
 | 19 | Enter key on Maps input triggers resolution | set value, press Enter, card shown |
+| 20 | Progressive fallback finds results after word-drop | 2 DOHMH calls; status has "shortened from" + original name |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -261,6 +262,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - `TX(text)` for Jina plain-text responses
 - For auto-retry (test 15): track `mapuCalls` counter; return 503 on call 1, success on call 2
 - For deep-link tests (test 17): pass `pageUrl = BASE + '?q=Name&loc=Borough'` to the test runner
+- For progressive fallback (test 20): check `u.includes('SUSHI')` (not `decodeURIComponent(u).includes('OITA SUSHI')`) — URLSearchParams encodes spaces as `+`, so the decoded URL still has `+` after `decodeURIComponent`. Shared counter variables must be declared outside both `setup` and `fn` closures (they run in separate scopes within `T()`).
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js

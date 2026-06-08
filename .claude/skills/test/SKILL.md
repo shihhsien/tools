@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 18 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 20 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 19-case Playwright test suite, fix any failures, and confirm 52/52 assertions pass.
+Run the full 20-case Playwright test suite, fix any failures, and confirm 53/53 assertions pass.
 
 ## Setup
 
@@ -95,7 +95,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 19 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 20 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -111,7 +111,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `52 tests: 52 passed, 0 failed`
+Expected output ends with: `53 tests: 53 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -148,6 +148,17 @@ Ensure mock patterns match the actual outbound URLs:
 
 ### Apostrophe test (tests 6 & 7) fails
 Check that `displayName` (straight quotes) and `name` (SoQL-escaped with `''`) are kept separate in `search()`. The captured request URL should have `MIA''S` when decoded.
+
+### Shared state between `setup` and `fn`
+`setup` and `fn` are separate function parameters to `T()` — variables declared inside one are not visible in the other. Declare shared state (`capturedUrl`, `resolverCalled`, counter variables) in a wrapping block scope before calling `T()`, e.g.:
+```js
+{ let callCount = 0;
+  await T('...', async p => { await setupRoute(p, [['pat', (r,u) => { callCount++; ... }]]); },
+          async p => { ok(callCount === 2, '...'); }); }
+```
+
+### Progressive fallback mock (test 20)
+URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `+` as space, so `decoded.includes('OITA SUSHI')` fails. Use `u.includes('SUSHI')` to detect the two-word query instead.
 
 ## Step 4 — Iterate
 
