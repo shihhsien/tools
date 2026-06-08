@@ -7,6 +7,45 @@ inspection grades by restaurant name. Deployed on GitHub Pages.
 
 ---
 
+## Definition of done — keep memory & skills in sync (read this first)
+
+**Every change to this repo is incomplete until docs and skills match reality.**
+Do these as part of the same task, not as a follow-up — never end a turn having
+changed behaviour without also reconciling the items below. This is a standing
+instruction: apply it automatically on every change, without being asked.
+
+When you change **`nyc-restaurant-grade.html`**:
+1. **Bump the version** in `<div class="ver">vX.Y.Z</div>` (patch = fix, minor =
+   feature) and add a one-line entry under **Versioning → Notable versions**.
+2. **Update "Current:"** in the Versioning section to the new version.
+3. **Run the `test` skill** (`/test`) — it must end `N tests: N passed, 0 failed`.
+4. If you added/changed behaviour, **add or update a test case** and reflect it in
+   the **§Testing table** here AND the `test` skill (case count, assertion count,
+   harness fixtures, and any fix-note for a new gotcha).
+5. **Update the relevant architecture section** here (data flow, Maps parsing,
+   palette/placard, etc.) so the prose matches the code.
+6. If the change alters what the UI looks like, **run the `verify` skill** and
+   confirm the screenshots.
+
+When you change a **skill** (`.claude/skills/*/SKILL.md`): make sure its
+`description`, case/assertion counts, harness template (fixtures + helpers), and
+fix-notes still match the code and CLAUDE.md. The harness template must be
+self-contained — a future agent copies it verbatim, so every fixture a test
+references (e.g. `MAZZAT2`) must be declared in the template.
+
+When you change **architecture or learn a new gotcha**: record it in the matching
+section here (or under **Known gotchas**) in the same commit — don't leave it in
+your head or only in the chat.
+
+**Consistency invariants** (grep these when in doubt):
+- Version string in HTML footer == "Current:" in CLAUDE.md.
+- Test-case count and assertion count are identical in CLAUDE.md §Testing, the
+  `test` skill `description`, and its "Run the full N-case…" / "Expected output"
+  lines.
+- Every test case in the §Testing table has a corresponding case in the suite.
+
+---
+
 ## Files
 
 - `nyc-restaurant-grade.html` — the entire app (HTML + CSS + JS, one file)
