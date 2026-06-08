@@ -95,7 +95,7 @@
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.13.0</div>
+<div class="ver">v1.13.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -286,10 +286,12 @@ function nameFromUrl(url) {
   } catch { return ''; }
 }
 
-// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL strings.
+// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL/error strings.
+// Firebase serves a "Dynamic Link Not Found" page for dead/expired short links — never a name.
+const JUNK_TITLE = /^(dynamic link not found|page not found|not found|untitled|error|maps)$/i;
 function cleanTitle(raw) {
   const name = (raw || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i, '').trim();
-  return name.length > 1 && !/^google/i.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
+  return name.length > 1 && !/^google/i.test(name) && !JUNK_TITLE.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
 }
 
 // Guess the NYC borough from an address string (used to prefill location).
