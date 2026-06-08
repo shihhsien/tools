@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Pre-push consistency guard — aborts the push if invariants are violated.
+exec "$(dirname "$0")/check-consistency.sh"
