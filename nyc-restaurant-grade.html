@@ -56,7 +56,7 @@
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.12.8</div>
+<div class="ver">v1.12.9</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -329,7 +329,7 @@ async function onMapsLink() {
       btn.disabled = false;
       if (e.message !== 'app-link') return setError('Could not resolve link.');
       const safeUrl = url.replace(/"/g, '&quot;');
-      setError(`Short Maps links can't be expanded here (Google blocks it). <a href="${safeUrl}" target="_blank" rel="noopener">Open it ↗</a>, let the map load, then copy the full URL from the address bar and paste it back — or just type the name above.`);
+      setError(`Couldn't find a restaurant name in this link. <a href="${safeUrl}" target="_blank" rel="noopener">Open it ↗</a> — once the map loads, copy the full URL from the address bar and paste it here, or type the name above.`);
     }
   }
 }
