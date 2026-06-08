@@ -167,6 +167,45 @@ Used by the iOS Shortcut recipe to bypass the short-link problem entirely.
 
 ---
 
+## Address extraction from resolved Maps links (research note)
+
+**Question investigated:** can the short-link resolvers be forced to return a full
+*address* (street, borough, ZIP), not just the name? **Findings — the resolved URL
+itself is the richest free, client-side source, not the resolver metadata:**
+
+1. **`/maps/place/NAME/` path often already contains the full address.** Place-card
+   shares encode it as comma segments: `/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/`.
+   `splitPlace` already splits on the first comma and mines the borough from the rest;
+   it does **not** currently extract the ZIP (a `/\b\d{5}\b/` regex on the trailing
+   segments would). Present for place-card shares, **absent** for dropped-pin /
+   coordinate shares (`/maps/place/lat,+lng/` — correctly rejected by `isName`).
+
+2. **`@lat,lng` is always present** on a resolved place URL. The only path to an
+   address when the place path is name-only is **reverse geocoding** the coordinates.
+   The free, no-key, CORS-enabled option is **Nominatim** (`nominatim.openstreetmap.org/reverse?format=jsonv2&lat=..&lon=..&zoom=18&addressdetails=1`)
+   → returns `address.postcode` (ZIP) and `address.borough`. Hard limit **1 req/sec**;
+   must send a `Referer` (browsers do automatically). The common "CORS error" is
+   misdiagnosed rate-limiting — the endpoint sends `Access-Control-Allow-Origin: *`.
+
+3. **`data=!...` protobuf yields no parseable address** — only coordinates (redundant
+   with `@`) and opaque place/feature/KG IDs that need a keyed Google API to expand.
+   Not worth decoding.
+
+4. **microlink & Jina add little address value for Maps targets.** Google's Maps page
+   is JS-hydrated and bot-blocked, so there's no clean address meta/JSON-LD to scrape.
+   `viaMicrolink` only runs `boroFromAddr(data.url)` today — it could also try
+   `boroFromAddr(data.title)` (free, the title sometimes carries the address), but
+   street-level data from these services is unreliable. microlink *does* support free
+   CSS-selector DOM scraping via `&data.X.selector=…&data.X.attr=textContent` GET params
+   (50/day, no key), but selectors against Google's obfuscated Maps DOM are brittle.
+
+**Recommended tiered design if this is ever built** (deferred — not implemented):
+parse the place path for street/borough/ZIP → else regex `@lat,lng` and call Nominatim
+→ keep microlink/Jina as name-only resolvers. Adding Nominatim means a new network
+dependency and a new mocked test case.
+
+---
+
 ## JS code map
 
 The `<script>` is organised into labelled sections:
