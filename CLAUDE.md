@@ -349,7 +349,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.12.8**
+Current: **v1.12.9**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -365,6 +365,7 @@ Notable versions:
 - v1.12.6 — Enter key on Maps input triggers resolution
 - v1.12.7 — progressive word-drop fallback: if no results, retry with one fewer word until a match is found or the name is exhausted; status shows "shortened from ORIGINAL" when fallback fires
 - v1.12.8 — debug trace log: append `?debug=1` to the URL to show a timestamped resolver trace panel below the results
+- v1.12.9 — fix misleading "Google blocks it" error message; now says "Couldn't find a restaurant name in this link"
 
 ## Known-good Maps parsing baseline
 
