@@ -440,7 +440,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.0**
+Current: **v1.14.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -460,6 +460,7 @@ Notable versions:
 - v1.13.0 — authentic NYC DOHMH placard palette (A blue / B green / C orange); `placardHtml` window-card hero shown for single results; pending color → muted grey
 - v1.13.1 — `cleanTitle` rejects Firebase error-page titles (`JUNK_TITLE`), fixing dead `maps.app.goo.gl` links that scraped "Dynamic Link Not Found" as a name
 - v1.14.0 — PWA assets: favicon (SVG + PNG set), apple-touch-icon, web app manifest; button transition + disabled state; input outline removed
+- v1.14.1 — `user-select: none` on grade chip; README: git hook setup + test count fix (22→23, 61→70)
 
 ## Known-good Maps parsing baseline
 
