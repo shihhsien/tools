@@ -365,3 +365,43 @@ Notable versions:
 - v1.12.6 — Enter key on Maps input triggers resolution
 - v1.12.7 — progressive word-drop fallback: if no results, retry with one fewer word until a match is found or the name is exhausted; status shows "shortened from ORIGINAL" when fallback fires
 - v1.12.8 — debug trace log: append `?debug=1` to the URL to show a timestamped resolver trace panel below the results
+
+## Known-good Maps parsing baseline
+
+**v1.12.8 (commit `b214028`) is the verified working baseline for all Maps link parsing.**
+
+If a future change breaks Maps parsing, diff against this commit:
+```bash
+git diff b214028 nyc-restaurant-grade.html
+```
+Or restore just the parsing functions:
+```bash
+git show b214028:nyc-restaurant-grade.html | grep -A 200 'Google Maps link'
+```
+
+What is confirmed working at this baseline (all covered by tests 8–16, 18–19):
+
+| Scenario | Behaviour |
+|---|---|
+| Full URL `/maps/place/NAME/…` | Name extracted by regex, no network call |
+| Full URL `?q=NAME` | Name extracted by URLSearchParams, no network call |
+| Coordinate URL `?q=40.75,-73.98` | Rejected by `isName` (no letters); error + Open link shown |
+| Tracking-param garbage `?g_st=ic` | Rejected by `isName` (`?` in string); error + Open link shown |
+| Short link → viaMapu success | `full_link` parsed by `nameFromUrl` |
+| Short link → viaMicrolink success | `data.url` / `data.title` parsed by `nameFromUrl` / `cleanTitle` |
+| Short link → viaJina success | `URL Source:` / `Title:` lines parsed from plain text |
+| All resolvers fail → retry once | `onMapsLink` loops attempt 1→2 before showing error |
+| All resolvers fail both attempts | Error with tappable "Open it ↗" link to original URL |
+| Resolver returns "Name, City, Borough" | `splitPlace` keeps name before first comma; borough prefills `#loc` |
+| Enter key on Maps input | Same resolution path as `input` event |
+
+`isName` invariants that must not be weakened:
+- Must contain at least one letter (`/[a-zA-Z]/`)
+- Must not contain `?`, `=`, or `&`
+- Must not start with `http`
+- Length > 1
+
+`normalize()` invariants that must not be narrowed:
+- U+2018 (`'`), U+2019 (`'`), U+2032 (`′`) all → U+0027 (`'`)
+- Applied to both `name` (search field) and `loc` (location field)
+- `name` is then further escaped `'` → `''` for SoQL; `displayName` keeps straight apostrophes for the UI
