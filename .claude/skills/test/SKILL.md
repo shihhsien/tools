@@ -33,6 +33,8 @@ const mkRow = o => ({
 });
 const MAZZAT = mkRow({ camis:'2', dba:'MAZZAT', boro:'Brooklyn', zipcode:'11231', score:'13',
   grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
+const MAZZAT2 = mkRow({ camis:'9', dba:'MAZZAT UPTOWN', boro:'Manhattan', zipcode:'10001', score:'5',
+  grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
 const MIAS = mkRow({ camis:'3', dba:"MIA'S BROOKLYN BAKERY", boro:'Brooklyn', zipcode:'11201' });
 
 // Harness
