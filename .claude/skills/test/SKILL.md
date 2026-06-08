@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 22 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 23 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 22-case Playwright test suite, fix any failures, and confirm 61/61 assertions pass.
+Run the full 23-case Playwright test suite, fix any failures, and confirm 70/70 assertions pass.
 
 ## Setup
 
@@ -95,7 +95,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 22 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 23 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -111,7 +111,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `61 tests: 61 passed, 0 failed`
+Expected output ends with: `70 tests: 70 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -165,6 +165,12 @@ URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `
 
 ### loc escaping test (test 22)
 `loc` goes through `normalize(...).replace(/'/g, "''")`. Test 22 fills `#loc` with `O'NEIL ST` and checks the captured URL contains `O''NEIL`. Use `decoded.includes("O''NEIL")` — same `decodeURIComponent` caveat about `+` applies.
+
+### Placard tests (tests 4, 5, 5b)
+`placardHtml()` renders `.placard-wrap` only when `render()` gets exactly one group. Test 4 asserts `.placard-wrap` present on a single result; test 5 asserts absent on zero results; test 5b asserts absent when two cards render. Fixture `MAZZAT2` (a second distinct restaurant) drives the multi-result case.
+
+### Firebase junk-title test (test 23)
+A dead `maps.app.goo.gl` link resolves to Google's error page titled "Dynamic Link Not Found". `cleanTitle`'s `JUNK_TITLE` regex must reject it. Mock `microlink.io` → `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` → coordinates only, `jina` → empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
 
 ## Step 4 — Iterate
 

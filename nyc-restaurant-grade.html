@@ -7,7 +7,18 @@
 <meta name="apple-mobile-web-app-title" content="NYC Grade">
 <title>NYC Grade</title>
 <style>
-  :root { --bg:#0b0b0c; --card:#161617; --line:#2a2a2c; --text:#f4f4f5; --muted:#9b9ba1; --A:#16a34a; --B:#ca8a04; --C:#dc2626; --gray:#52525b; }
+  /* Authentic DOHMH placard palette: blue A · green B · orange C */
+  :root {
+    --bg:   #0b0b0c;
+    --card: #161617;
+    --line: #2a2a2c;
+    --text: #f4f4f5;
+    --muted:#9b9ba1;
+    --gray: #52525b;
+    --A:    #1f57a6; /* blue   — was #16a34a (traffic-light green) */
+    --B:    #2f8b4e; /* green  — was #ca8a04 (traffic-light amber) */
+    --C:    #e07d2a; /* orange — was #dc2626 (traffic-light red)   */
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { overflow-x: hidden; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 60px; max-width: 600px; }
@@ -36,7 +47,35 @@
   .detail { font-size: 13px; margin-top: 10px; line-height: 1.45; }
   .detail b { font-weight: 600; }
   .viol { font-size: 12px; color: var(--muted); margin-top: 6px; }
-  .pending { color: var(--B); }
+  .pending { color: var(--muted); }
+
+  /* === Grade placard (hero — shown for single result) === */
+  .placard-wrap { display: flex; justify-content: center; margin-top: 12px; }
+  .placard {
+    width: 200px; background: #fff; border-radius: 4px;
+    padding: 10px 14px 12px; text-align: center;
+    font-family: "Arial Narrow", Arial, sans-serif;
+    box-shadow: 0 2px 16px rgba(0,0,0,.5);
+  }
+  .placard-header {
+    padding-bottom: 6px; margin-bottom: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .placard-sanitary { font-size: 9px; opacity: .8; }
+  .placard-grade-word { font-size: 13px; font-weight: 900; letter-spacing: .12em; margin-top: 2px; }
+  .placard-letter {
+    font-size: 110px; font-weight: 900; line-height: 1;
+    margin: 4px 0 2px; letter-spacing: -.02em;
+  }
+  .placard-pending {
+    font-size: 22px; font-weight: 700; line-height: 1.2;
+    margin: 16px 0; letter-spacing: .02em; text-transform: uppercase;
+  }
+  .placard-footer {
+    padding-top: 6px; margin-top: 4px;
+    font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  }
+  .placard-rule { width: 100%; height: 0; }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
@@ -56,7 +95,7 @@
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.12.9</div>
+<div class="ver">v1.13.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -156,15 +195,42 @@ function cardHtml({ info, graded, latest }) {
     </div>`;
 }
 
+// Grade placard — the iconic NYC DOHMH window card, shown as hero for a single result.
+function placardHtml(grade) {
+  const g = (grade || '').toUpperCase();
+  const known = ['A', 'B', 'C'].includes(g);
+  const pending = !known;
+  const inkMap = { A: '#1f57a6', B: '#2f8b4e', C: '#e07d2a' };
+  const ink = pending ? '#1a1a1a' : inkMap[g];
+  const borderPx = pending ? '1px' : '2px';
+  const letterOrPending = pending
+    ? `<div class="placard-pending">Grade<br>Pending</div>`
+    : `<div class="placard-letter">${g}</div>`;
+  return `<div class="placard-wrap">
+      <div class="placard" style="color:${ink}">
+        <div class="placard-header" style="border-bottom:${borderPx} solid ${ink}">
+          <div class="placard-sanitary">Sanitary Inspection</div>
+          <div class="placard-grade-word">Grade</div>
+        </div>
+        ${letterOrPending}
+        <div class="placard-footer" style="border-top:1px solid ${ink}">
+          NYC Dept of Health &amp; Mental Hygiene
+        </div>
+      </div>
+    </div>`;
+}
+
 function render(rows, name, originalName) {
   const groups = groupByRestaurant(rows);
   if (!groups.length) {
     setStatus(`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`);
+    resultsEl.innerHTML = '';
     return;
   }
   const note = originalName ? ` · shortened from "${originalName}"` : '';
   setStatus(`${groups.length} match(es) · official data${note}`);
-  resultsEl.innerHTML = groups.map(cardHtml).join('');
+  const hero = groups.length === 1 ? placardHtml(groups[0].graded?.grade ?? null) : '';
+  resultsEl.innerHTML = hero + groups.map(cardHtml).join('');
 }
 
 // ---- Search -----------------------------------------------------------
@@ -220,10 +286,12 @@ function nameFromUrl(url) {
   } catch { return ''; }
 }
 
-// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL strings.
+// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL/error strings.
+// Firebase serves a "Dynamic Link Not Found" page for dead/expired short links — never a name.
+const JUNK_TITLE = /^(dynamic link not found|page not found|not found|untitled|error|maps)$/i;
 function cleanTitle(raw) {
   const name = (raw || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i, '').trim();
-  return name.length > 1 && !/^google/i.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
+  return name.length > 1 && !/^google/i.test(name) && !JUNK_TITLE.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
 }
 
 // Guess the NYC borough from an address string (used to prefill location).

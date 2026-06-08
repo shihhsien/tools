@@ -74,7 +74,12 @@ splitPlace(name, boro)    — splits "Name, 123 St, Brooklyn" on first comma;
 ```
 
 `cleanTitle(raw)` strips " - Google Maps" suffix and rejects empty, Google-only,
-URL-like (`http…`), or query-string-like (`?`/`=`/`&`) strings.
+URL-like (`http…`), query-string-like (`?`/`=`/`&`), and known **error-page
+titles** (`JUNK_TITLE`: "Dynamic Link Not Found", "Page Not Found", "Not Found",
+"Untitled", "Error", "Maps"). The error-title block matters because a dead/expired
+`maps.app.goo.gl` short link resolves to Google's Firebase error page, whose
+`<title>` is **"Dynamic Link Not Found"** — without the block, `viaMicrolink`
+scrapes that title and the app searches DOHMH for "DYNAMIC LINK NOT FOUND".
 `nameFromUrl` applies the same validity check to both the `/maps/place/` and `?q=`
 extracted values — rejects coordinates (no letters), URL fragments, and short codes
 containing query chars. This prevents resolver garbage (raw short codes, expanded
@@ -111,10 +116,33 @@ The `<script>` is organised into labelled sections:
 | Config & DOM | constants, cached element refs |
 | Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate` |
 | NYC DOHMH API | `buildUrl`, `getJSON` (with corsproxy.io fallback) |
-| Rendering | `groupByRestaurant`, `cardHtml`, `render` |
+| Rendering | `groupByRestaurant`, `cardHtml`, `placardHtml`, `render` |
 | Search | `search` |
 | Maps parsing | `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Wiring | `onMapsLink` (with auto-retry), event listeners, deep-link init on load |
+
+---
+
+## Grade palette & placard (v1.13.0)
+
+Grade colors use the **authentic NYC DOHMH window-card palette**, not the old
+traffic-light scheme. No red anywhere — even a C is a calm orange.
+
+| Grade | Color token | Hex | Points | (old traffic-light) |
+|---|---|---|---|---|
+| A | `--A` | `#1f57a6` blue | 0–13 | was `#16a34a` green |
+| B | `--B` | `#2f8b4e` green | 14–27 | was `#ca8a04` amber |
+| C | `--C` | `#e07d2a` orange | 28+ | was `#dc2626` red |
+
+`placardHtml(grade)` renders the iconic white DOHMH window card (header
+"Sanitary Inspection / Grade", giant letter in the grade ink color, footer
+"NYC Dept of Health & Mental Hygiene"). `render()` shows it as a **hero element
+only when exactly one restaurant matches** (`groups.length === 1`); multi-result
+lists use the compact `.grade` chips in each card. An unknown/pending grade
+renders a "Grade Pending" placard in near-black `#1a1a1a` with a thin border.
+
+The `.pending` status color is `var(--muted)` (grey), **not** `var(--B)` — amber
+no longer signals "pending" now that it means a genuine B grade.
 
 ---
 
@@ -231,15 +259,16 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (all 19 must pass):**
+**Required test cases (23 cases, 70 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
 | 1 | Version footer | `.ver` text === `vX.Y.Z` |
 | 2 | No JS errors on bare load | `pageerror` events = 0 |
 | 3 | Empty search guard | status includes "Enter a restaurant name" |
-| 4 | Basic search — card, name, grade, status | `.name`, `.grade`, "1 match" in status |
-| 5 | No results | status includes "No active record" |
+| 4 | Basic search — card, name, grade, status, placard | `.name`, `.grade`, "1 match"; `.placard-wrap` present (single result) |
+| 5 | No results | status includes "No active record"; no `.placard-wrap` |
+| 5b | Placard hidden for multiple results | 2 cards shown; no `.placard-wrap` |
 | 6 | Apostrophe SoQL escaping + display | captured URL has `MIA''S`; display/status has no `''` |
 | 7 | Smart quote (U+2019) normalized | captured URL has `MIA''S` |
 | 8 | Full Maps URL `/maps/place/` — no resolver calls | resolver routes never hit; `#q` filled; card shown |
@@ -257,6 +286,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 20 | Progressive fallback finds results after word-drop | 2 DOHMH calls; status has "shortened from" + original name |
 | 21 | Prime symbol (U+2032) normalized and escaped for SoQL | captured URL has `MIA''S`; status has no `''` |
 | 22 | Apostrophe in `loc` field gets SoQL-escaped | captured URL has `O''NEIL` in the `$where` clause |
+| 23 | Firebase "Dynamic Link Not Found" error title rejected | DOHMH not called; `#q` stays empty; error with Open link |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -265,6 +295,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For auto-retry (test 15): track `mapuCalls` counter; return 503 on call 1, success on call 2
 - For deep-link tests (test 17): pass `pageUrl = BASE + '?q=Name&loc=Borough'` to the test runner
 - For progressive fallback (test 20): check `u.includes('SUSHI')` (not `decodeURIComponent(u).includes('OITA SUSHI')`) — URLSearchParams encodes spaces as `+`, so the decoded URL still has `+` after `decodeURIComponent`. Shared counter variables must be declared outside both `setup` and `fn` closures (they run in separate scopes within `T()`).
+- For the Firebase junk-title test (test 23): mock `microlink.io` to return `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` to coordinates only, `jina` to empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -349,7 +380,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.12.9**
+Current: **v1.13.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -366,6 +397,8 @@ Notable versions:
 - v1.12.7 — progressive word-drop fallback: if no results, retry with one fewer word until a match is found or the name is exhausted; status shows "shortened from ORIGINAL" when fallback fires
 - v1.12.8 — debug trace log: append `?debug=1` to the URL to show a timestamped resolver trace panel below the results
 - v1.12.9 — fix misleading "Google blocks it" error message; now says "Couldn't find a restaurant name in this link"
+- v1.13.0 — authentic NYC DOHMH placard palette (A blue / B green / C orange); `placardHtml` window-card hero shown for single results; pending color → muted grey
+- v1.13.1 — `cleanTitle` rejects Firebase error-page titles (`JUNK_TITLE`), fixing dead `maps.app.goo.gl` links that scraped "Dynamic Link Not Found" as a name
 
 ## Known-good Maps parsing baseline
 
@@ -395,6 +428,7 @@ What is confirmed working at this baseline (all covered by tests 8–16, 18–19
 | All resolvers fail both attempts | Error with tappable "Open it ↗" link to original URL |
 | Resolver returns "Name, City, Borough" | `splitPlace` keeps name before first comma; borough prefills `#loc` |
 | Enter key on Maps input | Same resolution path as `input` event |
+| Dead short link → "Dynamic Link Not Found" title | Rejected by `cleanTitle` `JUNK_TITLE` block; error + Open link shown (v1.13.1) |
 
 `isName` invariants that must not be weakened:
 - Must contain at least one letter (`/[a-zA-Z]/`)
