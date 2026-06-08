@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 20 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 22 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 20-case Playwright test suite, fix any failures, and confirm 53/53 assertions pass.
+Run the full 22-case Playwright test suite, fix any failures, and confirm 58/58 assertions pass.
 
 ## Setup
 
@@ -95,7 +95,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 20 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 22 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -111,7 +111,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `53 tests: 53 passed, 0 failed`
+Expected output ends with: `58 tests: 58 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -159,6 +159,12 @@ Check that `displayName` (straight quotes) and `name` (SoQL-escaped with `''`) a
 
 ### Progressive fallback mock (test 20)
 URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `+` as space, so `decoded.includes('OITA SUSHI')` fails. Use `u.includes('SUSHI')` to detect the two-word query instead.
+
+### Unicode normalization tests (tests 7, 21)
+`normalize()` in `search()` handles three codepoints: U+2018, U+2019, U+2032. Write these directly in Python heredocs — never via the Edit or Write tool, which will corrupt them. Test 7 needs intentional U+2019 in the input; test 21 needs intentional U+2032. Both verify the captured DOHMH URL contains `MIA''S`.
+
+### loc escaping test (test 22)
+`loc` goes through `normalize(...).replace(/'/g, "''")`. Test 22 fills `#loc` with `O'NEIL ST` and checks the captured URL contains `O''NEIL`. Use `decoded.includes("O''NEIL")` — same `decodeURIComponent` caveat about `+` applies.
 
 ## Step 4 — Iterate
 

@@ -255,6 +255,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 18 | Borough extracted from resolver place name | `Mazzat, Brooklyn, NY` splits to name=Mazzat, loc=BROOKLYN |
 | 19 | Enter key on Maps input triggers resolution | set value, press Enter, card shown |
 | 20 | Progressive fallback finds results after word-drop | 2 DOHMH calls; status has "shortened from" + original name |
+| 21 | Prime symbol (U+2032) normalized and escaped for SoQL | captured URL has `MIA''S`; status has no `''` |
+| 22 | Apostrophe in `loc` field gets SoQL-escaped | captured URL has `O''NEIL` in the `$where` clause |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -315,11 +317,20 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
   before showing the error. Do not remove this retry or the services will appear
   broken on first use.
 
-- **`search()` uses two name variables.** `displayName` is the user-visible string
-  (normalized, straight apostrophes). `name` is `displayName` with apostrophes
-  doubled for SoQL (`'` → `''`). Only `name` goes into `buildUrl()`; only
-  `displayName` goes into `render()` and status messages. Do not collapse them —
-  the escaped form leaking into the UI is a bug (showed as `MIA''S` in the status bar).
+- **`search()` normalize → escape pipeline — do not collapse any step.**
+
+  1. `normalize(s)` converts three Unicode variants to straight U+0027:
+     - U+2018 LEFT SINGLE QUOTATION MARK (`'`)
+     - U+2019 RIGHT SINGLE QUOTATION MARK (`'`) — the common iOS smart quote
+     - U+2032 PRIME (`′`) — appears in addresses like "5′ Market St" copied from Maps
+
+  2. `displayName` — normalized, straight apostrophes, uppercased. Goes into `render()` and status messages only.
+
+  3. `name` — `displayName` with `'` → `''` for SoQL. Goes into `buildUrl()` only.
+
+  4. `loc` — also normalized then SoQL-escaped (`normalize(...).replace(/'/g, "''")`). Goes into `buildUrl()` only.
+
+  Do not collapse `displayName` and `name` — the escaped form leaking into the UI is a bug (shows `MIA''S` in the status bar). Tests 6, 7, 21, 22 protect this pipeline.
 
 - **Edit tool curly-quote corruption.** The Edit tool sometimes replaces straight
   apostrophes (`'` U+0027) with curly quotes (`'`/`'` U+2018/U+2019), breaking
