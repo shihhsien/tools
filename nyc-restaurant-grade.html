@@ -7,23 +7,37 @@
 <meta name="apple-mobile-web-app-title" content="NYC Grade">
 <title>NYC Grade</title>
 <style>
-  :root { --bg:#0b0b0c; --card:#161617; --line:#2a2a2c; --text:#f4f4f5; --muted:#9b9ba1; --A:#16a34a; --B:#ca8a04; --C:#dc2626; --gray:#52525b; }
+  /* Authentic DOHMH placard palette: blue A · green B · orange C */
+  :root {
+    --bg:   #0b0b0c;
+    --card: #161617;
+    --line: #2a2a2c;
+    --text: #f4f4f5;
+    --muted:#9b9ba1;
+    --gray: #52525b;
+    --A:    #1f57a6; /* blue   — was #16a34a (traffic-light green) */
+    --B:    #2f8b4e; /* green  — was #ca8a04 (traffic-light amber) */
+    --C:    #e07d2a; /* orange — was #dc2626 (traffic-light red)   */
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { overflow-x: hidden; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 60px; max-width: 600px; }
+  a { color: #60a5fa; }
   h1 { font-size: 20px; margin: 4px 0 2px; }
   .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
   .row { display: flex; gap: 8px; }
-  input { flex: 1; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); width: 100%; }
+  .row + .row { margin-top: 8px; }
+  input { flex: 1; width: 100%; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
   input::placeholder { color: var(--muted); }
   #maps-input { background: #1a1a2e; border-color: #3a3a5c; }
   .divider { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
   .divider span { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-  button { padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; width: 100%; margin-top: 10px; }
+  button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; }
   button:active { opacity: .7; }
   .status { font-size: 13px; color: var(--muted); margin: 14px 2px; }
   .status.err { color: #f87171; }
+  .muted { color: var(--muted); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
   .top { display: flex; gap: 12px; align-items: center; }
   .grade { flex: 0 0 auto; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 10px; font-weight: 700; font-size: 26px; color: #fff; }
@@ -33,126 +47,254 @@
   .detail { font-size: 13px; margin-top: 10px; line-height: 1.45; }
   .detail b { font-weight: 600; }
   .viol { font-size: 12px; color: var(--muted); margin-top: 6px; }
-  .pending { color: var(--B); }
+  .pending { color: var(--muted); }
+
+  /* === Grade placard (hero — shown for single result) === */
+  .placard-wrap { display: flex; justify-content: center; margin-top: 12px; }
+  .placard {
+    width: 200px; background: #fff; border-radius: 4px;
+    padding: 10px 14px 12px; text-align: center;
+    font-family: "Arial Narrow", Arial, sans-serif;
+    box-shadow: 0 2px 16px rgba(0,0,0,.5);
+  }
+  .placard-header {
+    padding-bottom: 6px; margin-bottom: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .placard-sanitary { font-size: 9px; opacity: .8; }
+  .placard-grade-word { font-size: 13px; font-weight: 900; letter-spacing: .12em; margin-top: 2px; }
+  .placard-letter {
+    font-size: 110px; font-weight: 900; line-height: 1;
+    margin: 4px 0 2px; letter-spacing: -.02em;
+  }
+  .placard-pending {
+    font-size: 22px; font-weight: 700; line-height: 1.2;
+    margin: 16px 0; letter-spacing: .02em; text-transform: uppercase;
+  }
+  .placard-footer {
+    padding-top: 6px; margin-top: 4px;
+    font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  }
+  .placard-rule { width: 100%; height: 0; }
+  #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
+  .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <h1>NYC Restaurant Grade</h1>
 <div class="sub">Official NYC Health Dept data (DOHMH). Name + optional location (street, borough, or ZIP — not neighborhood).</div>
-<div class="row">
-  <input id="q" placeholder="Restaurant name" autocapitalize="characters" autocomplete="off">
-</div>
-<div class="row" style="margin-top:8px">
-  <input id="loc" placeholder="Street, borough, or ZIP (optional)" autocapitalize="words" autocomplete="off">
-</div>
+
+<div class="row"><input id="q" placeholder="Restaurant name" autocapitalize="characters" autocomplete="off"></div>
+<div class="row"><input id="loc" placeholder="Street, borough, or ZIP (optional)" autocapitalize="words" autocomplete="off"></div>
 <div class="divider"><span>or paste a link</span></div>
 <div class="row">
-  <input id="maps-input" placeholder="Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
+  <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
 </div>
+
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
-<div style="position:fixed;bottom:0;left:0;right:0;padding:10px 16px;font-size:11px;color:var(--gray);background:var(--bg);border-top:1px solid var(--line)">v1.6.0</div>
+<div id="debug-log"></div>
+<div class="ver">v1.13.0</div>
 
 <script>
-const API = "https://data.cityofnewyork.us/resource/43nn-pn8j.json";
-const PROXY = "https://corsproxy.io/?url=";
-const statusEl = document.getElementById('status');
+// ---- Config & DOM -----------------------------------------------------
+const API = 'https://data.cityofnewyork.us/resource/43nn-pn8j.json';
+const PROXY = 'https://corsproxy.io/?url=';
+const MAPS_HOSTS = /google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i;
+
+const nameInput = document.getElementById('q');
+const locInput  = document.getElementById('loc');
+const mapsInput = document.getElementById('maps-input');
+const statusEl  = document.getElementById('status');
 const resultsEl = document.getElementById('results');
-const btn = document.getElementById('go');
+const btn       = document.getElementById('go');
+const DEBUG   = new URLSearchParams(location.search).has('debug');
+const debugEl = document.getElementById('debug-log');
+if (DEBUG) debugEl.style.display = 'block';
 
-function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});}catch{return d;} }
-function gradeClass(g){ return ['A','B','C'].includes(g)?g:'other'; }
+// ---- Small helpers ----------------------------------------------------
+const decode = s => { try { return decodeURIComponent(s); } catch { return s; } };
+const setStatus = text => { statusEl.className = 'status'; statusEl.textContent = text; };
+const setError  = html => { statusEl.className = 'status err'; statusEl.innerHTML = html; };
+const gradeClass = g => (['A', 'B', 'C'].includes(g) ? g : 'other');
+const dbg = DEBUG ? msg => {
+  const el = document.createElement('div');
+  el.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`;
+  debugEl.appendChild(el);
+  debugEl.scrollTop = debugEl.scrollHeight;
+} : () => {};
 
-function buildUrl(name, loc){
+function fmtDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
+  catch { return d; }
+}
+
+// ---- NYC DOHMH API ----------------------------------------------------
+function buildUrl(name, loc) {
   let where = `upper(dba) like '%${name}%'`;
-  if (loc){
+  if (loc) {
     const L = loc.toUpperCase();
     where += ` and (upper(street) like '%${L}%' or upper(boro) like '%${L}%' or zipcode='${loc}')`;
   }
-  const params = new URLSearchParams();
-  params.set('$select','camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,critical_flag,action');
-  params.set('$where', where);
-  params.set('$order','inspection_date DESC');
-  params.set('$limit','200');
-  return `${API}?${params.toString()}`;
+  const params = new URLSearchParams({
+    $select: 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,critical_flag,action',
+    $where: where,
+    $order: 'inspection_date DESC',
+    $limit: '200',
+  });
+  return `${API}?${params}`;
 }
 
-async function getJSON(url){
+// Fetch JSON directly, falling back to a CORS proxy if the call is blocked.
+async function getJSON(url) {
   try {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    return await r.json();
-  } catch(e) {
-    const r2 = await fetch(PROXY + encodeURIComponent(url));
-    if (!r2.ok) throw new Error('HTTP '+r2.status+' (proxy)');
-    return await r2.json();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  } catch {
+    const res = await fetch(PROXY + encodeURIComponent(url));
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' (proxy)');
+    return res.json();
   }
 }
 
-function render(rows, name){
-  if(!rows.length){ statusEl.className='status'; statusEl.textContent=`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`; return; }
-  const g = {};
-  for(const r of rows){
-    const id=r.camis;
-    if(!g[id]) g[id]={info:r,graded:null,latest:null};
-    const e=g[id];
-    if(!e.latest || r.inspection_date>e.latest.inspection_date) e.latest=r;
-    if(r.grade && (!e.graded || r.grade_date>e.graded.grade_date)) e.graded=r;
+// ---- Rendering --------------------------------------------------------
+// One restaurant has many inspection rows. Collapse them by camis, keeping
+// the latest inspection and the most recent letter grade separately.
+function groupByRestaurant(rows) {
+  const byId = {};
+  for (const row of rows) {
+    const g = byId[row.camis] || (byId[row.camis] = { info: row, latest: row, graded: null });
+    if (row.inspection_date > g.latest.inspection_date) g.latest = row;
+    if (row.grade && (!g.graded || row.grade_date > g.graded.grade_date)) g.graded = row;
   }
-  statusEl.className='status';
-  statusEl.textContent=`${Object.keys(g).length} match(es) · official data`;
-  resultsEl.innerHTML='';
-  for(const id in g){
-    const {info,graded,latest}=g[id];
-    const grade=graded?graded.grade:null;
-    const addr=`${info.building||''} ${info.street||''}, ${info.boro||''} ${info.zipcode||''}`.replace(/\s+/g,' ').trim();
-    const c=document.createElement('div'); c.className='card';
-    let gradeLine;
-    if(graded){ gradeLine=`Grade <b>${graded.grade}</b> · score ${graded.score??'—'} · graded ${fmtDate(graded.grade_date)}`; }
-    else { gradeLine=`<span class="pending">No letter grade on record yet</span> (latest score ${latest.score??'—'})`; }
-    const violLine = latest.violation_description ? `<div class="viol">Latest cited (${latest.critical_flag||''}): ${latest.violation_description}</div>` : '';
-    c.innerHTML=`
+  return Object.values(byId);
+}
+
+function cardHtml({ info, graded, latest }) {
+  const grade = graded ? graded.grade : null;
+  const addr = `${info.building || ''} ${info.street || ''}, ${info.boro || ''} ${info.zipcode || ''}`
+    .replace(/\s+/g, ' ').trim();
+  const gradeLine = graded
+    ? `Grade <b>${graded.grade}</b> · score ${graded.score ?? '—'} · graded ${fmtDate(graded.grade_date)}`
+    : `<span class="pending">No letter grade on record yet</span> (latest score ${latest.score ?? '—'})`;
+  const viol = latest.violation_description
+    ? `<div class="viol">Latest cited (${latest.critical_flag || ''}): ${latest.violation_description}</div>`
+    : '';
+  return `
+    <div class="card">
       <div class="top">
-        <div class="grade ${gradeClass(grade)}">${grade||'?'}</div>
-        <div><div class="name">${info.dba||'Unknown'}</div><div class="addr">${addr}</div></div>
+        <div class="grade ${gradeClass(grade)}">${grade || '?'}</div>
+        <div><div class="name">${info.dba || 'Unknown'}</div><div class="addr">${addr}</div></div>
       </div>
       <div class="detail">${gradeLine}</div>
-      <div class="detail" style="color:var(--muted)">Last inspection: ${fmtDate(latest.inspection_date)} · ${latest.inspection_type||''}</div>
-      ${violLine}`;
-    resultsEl.appendChild(c);
+      <div class="detail muted">Last inspection: ${fmtDate(latest.inspection_date)} · ${latest.inspection_type || ''}</div>
+      ${viol}
+    </div>`;
+}
+
+// Grade placard — the iconic NYC DOHMH window card, shown as hero for a single result.
+function placardHtml(grade) {
+  const g = (grade || '').toUpperCase();
+  const known = ['A', 'B', 'C'].includes(g);
+  const pending = !known;
+  const inkMap = { A: '#1f57a6', B: '#2f8b4e', C: '#e07d2a' };
+  const ink = pending ? '#1a1a1a' : inkMap[g];
+  const borderPx = pending ? '1px' : '2px';
+  const letterOrPending = pending
+    ? `<div class="placard-pending">Grade<br>Pending</div>`
+    : `<div class="placard-letter">${g}</div>`;
+  return `<div class="placard-wrap">
+      <div class="placard" style="color:${ink}">
+        <div class="placard-header" style="border-bottom:${borderPx} solid ${ink}">
+          <div class="placard-sanitary">Sanitary Inspection</div>
+          <div class="placard-grade-word">Grade</div>
+        </div>
+        ${letterOrPending}
+        <div class="placard-footer" style="border-top:1px solid ${ink}">
+          NYC Dept of Health &amp; Mental Hygiene
+        </div>
+      </div>
+    </div>`;
+}
+
+function render(rows, name, originalName) {
+  const groups = groupByRestaurant(rows);
+  if (!groups.length) {
+    setStatus(`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`);
+    resultsEl.innerHTML = '';
+    return;
+  }
+  const note = originalName ? ` · shortened from "${originalName}"` : '';
+  setStatus(`${groups.length} match(es) · official data${note}`);
+  const hero = groups.length === 1 ? placardHtml(groups[0].graded?.grade ?? null) : '';
+  resultsEl.innerHTML = hero + groups.map(cardHtml).join('');
+}
+
+// ---- Search -----------------------------------------------------------
+async function search() {
+  const normalize = s => s.replace(/[‘’′]/g, "'");
+  const originalDisplay = normalize(nameInput.value.trim()).toUpperCase();
+  const loc  = normalize(locInput.value.trim()).replace(/'/g, "''");
+  if (!originalDisplay) return setStatus('Enter a restaurant name.');
+
+  btn.disabled = true;
+  resultsEl.innerHTML = '';
+
+  const words = originalDisplay.split(' ');
+  let lastUrl = '';
+  try {
+    for (let len = words.length; len >= 1; len--) {
+      const displayName = words.slice(0, len).join(' ');
+      const name = displayName.replace(/'/g, "''");
+      setStatus(len < words.length ? `Trying "${displayName}"…` : 'Looking up official data…');
+      dbg(`search: trying "${displayName}" (${len}/${words.length} words)`);
+      lastUrl = buildUrl(name, loc);
+      const rows = await getJSON(lastUrl);
+      const groups = groupByRestaurant(rows);
+      dbg(`search: got ${groups.length} result(s)`);
+      if (groups.length > 0 || len === 1) {
+        render(rows, displayName, len < words.length ? originalDisplay : null);
+        return;
+      }
+    }
+  } catch (e) {
+    setError(`Couldn't load (${e.message}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
+  } finally {
+    btn.disabled = false;
   }
 }
 
-async function search(){
-  const name=document.getElementById('q').value.trim().toUpperCase().replace(/'/g,'');
-  const loc=document.getElementById('loc').value.trim().replace(/'/g,'');
-  if(!name){ statusEl.className='status'; statusEl.textContent='Enter a restaurant name.'; return; }
-  btn.disabled=true; resultsEl.innerHTML=''; statusEl.className='status'; statusEl.textContent='Looking up official data…';
-  try{
-    const rows=await getJSON(buildUrl(name,loc));
-    render(rows,name);
-  }catch(e){
-    statusEl.className='status err';
-    statusEl.innerHTML=`Couldn't load (${e.message}). Open raw data directly: <a style="color:#60a5fa" href="${buildUrl(name,loc)}" target="_blank">view JSON</a>`;
-  }finally{ btn.disabled=false; }
+// ---- Google Maps link → restaurant name -------------------------------
+// Pull a place name out of a Maps URL (or any text containing one). No network.
+function nameFromUrl(url) {
+  if (!url) return '';
+  // Reject coordinates, URL strings, and query-param-looking values.
+  const isName = s => s.length > 1 && /[a-zA-Z]/.test(s) && !/[?=&]/.test(s) && !/^https?:\/\//i.test(s);
+  const place = url.match(/\/maps\/place\/([^/@?&"'\s]+)/);
+  if (place) {
+    const name = decode(place[1].replace(/\+/g, ' ')).trim();
+    dbg(`nameFromUrl /place/: "${name}" ${isName(name) ? "✓" : "✗ rejected"}`);
+    return isName(name) ? name : '';
+  }
+  try {
+    const q = (new URL(url).searchParams.get('q') || '').trim();
+    dbg(`nameFromUrl ?q: "${q}" ${isName(q) ? "✓" : "✗ rejected (no letters or contains ?/=)"}`);
+    return isName(q) ? q : '';
+  } catch { return ''; }
 }
 
-btn.addEventListener('click',search);
-document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
-document.getElementById('loc').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
-
-function extractFromUrl(url) {
-  if (!url) return null;
-  const m = url.match(/\/maps\/place\/([^/@?&]+)/);
-  if (m) { const n = decodeURIComponent(m[1].replace(/\+/g,' ')).trim(); if (n) return { name: n }; }
-  try { const q = new URL(url).searchParams.get('q'); if (q && q.length > 1) return { name: q.trim() }; } catch(e) {}
-  return null;
+// Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL strings.
+function cleanTitle(raw) {
+  const name = (raw || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i, '').trim();
+  return name.length > 1 && !/^google/i.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
 }
 
-// Best-effort: pull NYC borough from an address string
+// Guess the NYC borough from an address string (used to prefill location).
 function boroFromAddr(addr) {
-  const s = (addr||'').toUpperCase();
+  const s = (addr || '').toUpperCase();
   if (/BROOKLYN|KINGS/.test(s)) return 'BROOKLYN';
   if (/MANHATTAN|NEW YORK, NY/.test(s)) return 'MANHATTAN';
   if (/QUEENS/.test(s)) return 'QUEENS';
@@ -161,81 +303,116 @@ function boroFromAddr(addr) {
   return '';
 }
 
-async function resolveMapsLink(url) {
-  const direct = extractFromUrl(url);
-  if (direct) return direct;
-
-  // Try 1: Jina.ai reader — runs headless browser, handles JS-rendered redirects
-  try {
-    const res = await fetch('https://r.jina.ai/' + url, { headers: { 'X-Return-Format': 'text' } });
-    if (res.ok) {
-      const text = await res.text();
-      const srcUrl = (text.match(/URL Source:\s*(\S+)/i)||[])[1]||'';
-      const fromSrc = extractFromUrl(srcUrl);
-      if (fromSrc) return { ...fromSrc, boro: boroFromAddr(text) };
-      const titleLine = (text.match(/^Title:\s*(.+)$/im)||[])[1]||'';
-      const titleName = titleLine.replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-      if (titleName && !/^google/i.test(titleName) && titleName.length > 1) return { name: titleName, boro: boroFromAddr(text) };
-      const m = text.match(/\/maps\/place\/([^/@?\s\n\r"]{2,80})/i);
-      if (m) return { name: decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(), boro: boroFromAddr(text) };
-    }
-  } catch(e) {}
-
-  let html = '', finalUrl = '';
-
-  // Try 2: allorigins.win — returns status.url (the final URL after all redirects)
-  try {
-    const res = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
-    if (res.ok) { const d = await res.json(); finalUrl = d?.status?.url || ''; html = d?.contents || ''; }
-  } catch(e) {}
-
-  const fromFinal = extractFromUrl(finalUrl);
-  if (fromFinal) return { ...fromFinal, boro: boroFromAddr(html) };
-
-  // Try 3: corsproxy.io
-  if (!html) {
-    try {
-      const res = await fetch(PROXY + encodeURIComponent(url));
-      if (res.ok) html = await res.text();
-    } catch(e) {}
-  }
-
-  if (html) {
-    const m = html.match(/maps(?:\\\/|\/|%2F)place(?:\\\/|\/|%2F)([^\\\/\?@"&<\s\n\r]{2,80})/i);
-    if (m) { const n = decodeURIComponent(m[1].replace(/\+/g,' ')).replace(/@.*$/,'').trim(); if (n) return { name: n, boro: boroFromAddr(html) }; }
-
-    const cu = html.match(/["'](?:continueUrl|ifl|url)['"]\s*[=:]\s*["']([^"']*maps[^"']*)["']/i);
-    if (cu) { const r = extractFromUrl(cu[1]); if (r) return { ...r, boro: boroFromAddr(html) }; }
-
-    const mu = html.match(/https?:\\?\/\\?\/(?:www\.)?google\.com\\?\/maps[^\s"'<>\n\r]{5,}/i);
-    if (mu) { const r = extractFromUrl(mu[0].replace(/\\\//g,'/')); if (r) return { ...r, boro: boroFromAddr(html) }; }
-
-    const title = ((html.match(/<title[^>]*>([^<]+)/i)||[])[1]||'')
-      .replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i,'').trim();
-    if (title && !/^google/i.test(title)) return { name: title, boro: boroFromAddr(html) };
-  }
-
-  throw new Error('Could not extract name — enter it manually');
+// Resolvers may return "Name, 123 St, Brooklyn, NY" — keep the name, mine the boro.
+function splitPlace(name, boro) {
+  if (!name.includes(',')) return { name, boro };
+  const [first, ...rest] = name.split(',');
+  return { name: first.trim(), boro: boro || boroFromAddr(rest.join(',')) };
 }
 
-const mapsInput = document.getElementById('maps-input');
-mapsInput.addEventListener('input', async function() {
-  const url = this.value.trim();
-  if (!url.startsWith('http') || !/google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url)) return;
-  statusEl.className='status'; statusEl.textContent='Resolving Maps link…';
-  btn.disabled=true;
+function timeoutFetch(url, opts, ms = 6000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
+// Three best-effort resolvers for short links. All follow Google's redirect
+// server-side; Google blocks datacenter IPs inconsistently, so they're
+// raced with a timeout and treated as a bonus, not a guarantee.
+async function viaMapu(url) {
+  dbg('viaMapu: requesting...');
+  const res = await timeoutFetch('https://mapu.retiolus.net/unshortener?link=' + encodeURIComponent(url));
+  dbg(`viaMapu: HTTP ${res.status}`);
+  if (!res.ok) { dbg('viaMapu: ✗ failed'); throw 0; }
+  const data = await res.json();
+  const full = data.full_link || '';
+  dbg(`viaMapu: full_link="${full.slice(0,80)}"`);
+  const name = nameFromUrl(full) || cleanTitle(full);
+  if (!name) { dbg('viaMapu: ✗ no name extracted'); throw 0; }
+  dbg(`viaMapu: ✓ name="${name}"`);
+  return { name, boro: boroFromAddr(full) };
+}
+
+async function viaMicrolink(url) {
+  dbg('viaMicrolink: requesting...');
+  const res = await timeoutFetch('https://api.microlink.io/?url=' + encodeURIComponent(url));
+  dbg(`viaMicrolink: HTTP ${res.status}`);
+  const data = res.ok ? (await res.json()).data : null;
+  const name = data && (nameFromUrl(data.url) || cleanTitle(data.title));
+  if (!name) { dbg('viaMicrolink: ✗ no name'); throw 0; }
+  dbg(`viaMicrolink: ✓ name="${name}"`);
+  return { name, boro: boroFromAddr(data.url) };
+}
+
+async function viaJina(url) {
+  dbg('viaJina: requesting...');
+  const res = await timeoutFetch('https://r.jina.ai/' + url, { headers: { 'X-Return-Format': 'text' } });
+  dbg(`viaJina: HTTP ${res.status}`);
+  if (!res.ok) { dbg('viaJina: ✗ failed'); throw 0; }
+  const text = await res.text();
+  const source = (text.match(/URL Source:\s*(\S+)/i) || [])[1] || '';
+  const title  = (text.match(/^Title:\s*(.+)$/im) || [])[1] || '';
+  dbg(`viaJina: source="${source.slice(0,60)}" title="${title.slice(0,40)}"`);
+  const name = nameFromUrl(source) || cleanTitle(title) || nameFromUrl(text);
+  if (!name) { dbg('viaJina: ✗ no name'); throw 0; }
+  dbg(`viaJina: ✓ name="${name}"`);
+  return { name, boro: boroFromAddr(text) };
+}
+
+async function resolveMapsLink(url) {
+  const direct = nameFromUrl(url);
+  if (direct) { dbg(`resolved directly: "${direct}"`); return splitPlace(direct, ''); }
+  dbg('no direct name — racing 3 resolvers');
   try {
-    const result = await resolveMapsLink(url);
-    document.getElementById('q').value = result.name || result;
-    if (result.boro) document.getElementById('loc').value = result.boro;
-    this.value = '';
-    await search();
-  } catch(e) {
-    statusEl.className='status err';
-    statusEl.textContent='Could not resolve link: ' + e.message;
-    btn.disabled=false;
+    const place = await Promise.any([viaMapu(url), viaMicrolink(url), viaJina(url)]);
+    dbg(`resolver won: name="${place.name}" boro="${place.boro}"`);
+    return splitPlace(place.name, place.boro);
+  } catch {
+    dbg('all resolvers failed');
+    throw new Error('app-link');
   }
-});
+}
+
+// ---- Wiring -----------------------------------------------------------
+async function onMapsLink() {
+  const url = mapsInput.value.trim();
+  if (!url.startsWith('http') || !MAPS_HOSTS.test(url)) return;
+
+  if (DEBUG) { debugEl.innerHTML = ''; dbg(`Maps link: ${url}`); }
+  btn.disabled = true;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    dbg(`attempt ${attempt}/2`);
+    setStatus(attempt === 1 ? 'Resolving Maps link…' : 'Retrying…');
+    try {
+      const { name, boro } = await resolveMapsLink(url);
+      nameInput.value = name;
+      if (boro) locInput.value = boro;
+      mapsInput.value = '';
+      await search();
+      return;
+    } catch (e) {
+      if (attempt < 2) continue;
+      btn.disabled = false;
+      if (e.message !== 'app-link') return setError('Could not resolve link.');
+      const safeUrl = url.replace(/"/g, '&quot;');
+      setError(`Couldn't find a restaurant name in this link. <a href="${safeUrl}" target="_blank" rel="noopener">Open it ↗</a> — once the map loads, copy the full URL from the address bar and paste it here, or type the name above.`);
+    }
+  }
+}
+
+btn.addEventListener('click', search);
+[nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
+mapsInput.addEventListener('input', onMapsLink);
+mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });
+
+// Deep link: ?q=Name (&loc=Borough) auto-fills and searches on load, so the
+// tool can be opened pre-filled from a bookmark or an iOS Shortcut.
+const qs = new URLSearchParams(location.search);
+if (qs.get('q')) {
+  nameInput.value = qs.get('q');
+  if (qs.get('loc')) locInput.value = qs.get('loc');
+  search();
+}
 </script>
 </body>
 </html>
