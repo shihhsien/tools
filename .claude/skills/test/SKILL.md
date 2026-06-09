@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 23 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 24 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 23-case Playwright test suite, fix any failures, and confirm 73/73 assertions pass.
+Run the full 24-case Playwright test suite, fix any failures, and confirm 77/77 assertions pass.
 
 ## Setup
 
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `73 tests: 73 passed, 0 failed`
+Expected output ends with: `77 tests: 77 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -173,6 +173,9 @@ URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `
 
 ### Placard tests (tests 4, 5, 5b)
 `placardHtml()` renders `.placard-wrap` only when `render()` gets exactly one group. Test 4 asserts `.placard-wrap` present on a single result; test 5 asserts absent on zero results; test 5b asserts absent when two cards render. Fixture `MAZZAT2` (a second distinct restaurant) drives the multi-result case.
+
+### XSS escaping test (test 24)
+`cardHtml` runs all DOHMH fields through `htmlEsc()`. Test 24 uses a fixture with `dba: '<img src=x onerror="window.__xss=1">EVIL CAFE'`. Seed `window.__xss = 0` via `page.addInitScript(() => { window.__xss = 0; })` in the `setup` step (before `goto`), then after the card renders assert: `window.__xss === 0` (payload never fired), `.card img` is `null` (no element injected), and `.name` textContent contains the literal `<img` substring (markup shown as text, not parsed). If any of these fail, `htmlEsc()` is missing or bypassed in `cardHtml`.
 
 ### Firebase junk-title test (test 23)
 A dead `maps.app.goo.gl` link resolves to Google's error page titled "Dynamic Link Not Found". `cleanTitle`'s `JUNK_TITLE` regex must reject it. Mock `microlink.io` → `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` → coordinates only, `jina` → empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.

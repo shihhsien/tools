@@ -58,11 +58,11 @@ git push origin main
 Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`):
 
 ```bash
-# Write + run the 23-case suite (see CLAUDE.md §Testing for the full harness)
+# Write + run the 24-case suite (see CLAUDE.md §Testing for the full harness)
 node test.mjs
 ```
 
-23 cases, 73 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry, deep links, borough extraction, progressive word-drop fallback, and Firebase junk-title rejection.
+24 cases, 77 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry, deep links, borough extraction, progressive word-drop fallback, Firebase junk-title rejection, and XSS escaping of API data.
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
 
