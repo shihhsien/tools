@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 25 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 26 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 25-case Playwright test suite, fix any failures, and confirm 86/86 assertions pass.
+Run the full 26-case Playwright test suite, fix any failures, and confirm 84/84 assertions pass.
 
 ## Setup
 
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `86 tests: 86 passed, 0 failed`
+Expected output ends with: `84 tests: 84 passed, 0 failed`
 
 ## Step 3 — Fix failures
 

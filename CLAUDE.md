@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (25 cases, 86 assertions)
+- `.claude/skills/test/` — Playwright test skill (26 cases, 84 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -164,6 +164,12 @@ cuisine type ("Oita Sushi") while DOHMH has only the trading name ("OITA").
 
 `?q=Name&loc=Borough` on the page URL auto-fills and searches on load.
 Used by the iOS Shortcut recipe to bypass the short-link problem entirely.
+
+`?maps=URL` passes a raw Google Maps URL (full or short link) directly to the
+resolver pipeline on load. Used by the 2-action iOS Shortcut: **Receive URLs
+from Share Sheet → Open URLs** with `?maps=` + Shortcut Input. The app runs
+`onMapsLink()` on the value, following the same resolver path (mapu → microlink
+→ jina, with auto-retry) as manual paste.
 
 ---
 
@@ -358,7 +364,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (25 cases, 86 assertions — all must pass):**
+**Required test cases (26 cases, 84 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -388,6 +394,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 23 | Firebase "Dynamic Link Not Found" error title rejected | DOHMH not called; `#q` stays empty; error with Open link |
 | 24 | XSS in API data is escaped, not executed | malicious `dba` `<img onerror>` → payload never fires; no injected `<img>`; `.name` shows literal markup as text |
 | 25 | iOS Shortcut tip (visibility, toggle, dismiss, persistence) | tip shown on iOS UA; starts collapsed; toggle opens/closes; dismiss hides + sets `localStorage`; hidden on reload after dismiss; hidden on non-iOS UA |
+| 26 | `?maps=URL` deep link triggers resolution on load | pass short link as `?maps=`; mock mapu → card shown; name correct |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -399,7 +406,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the Firebase junk-title test (test 23): mock `microlink.io` to return `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` to coordinates only, `jina` to empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
 - For tests 6, 7, 21, 22 (apostrophe/prime URL escaping): `URLSearchParams` encodes `'` as `%27`, so `capturedUrl.includes("MIA''S")` fails — use `decodeURIComponent(capturedUrl).includes("MIA''S")`. Unlike spaces (encoded as `+`, not decoded by `decodeURIComponent`), apostrophes ARE decoded by it.
 - For the XSS test (test 24): `dba` is `<img src=x onerror="window.__xss=1">EVIL CAFE`. Seed `window.__xss = 0` via `page.addInitScript` before load, then assert it stays `0` (the `onerror` never fires because `htmlEsc` turns `<` into `&lt;`), no `.card img` element exists, and `.name` textContent contains the literal `<img` string. Guards `htmlEsc()` in `cardHtml`.
-- For the iOS tip test (test 25): use `browser.newContext({ userAgent: IOS_UA })` where `IOS_UA` is an iPhone UA string. For the "tip hidden after dismiss on reload" sub-test, pre-seed localStorage via `page.addInitScript(() => localStorage.setItem('tip-v1', '1'))` BEFORE `page.goto()` — calling `page.evaluate()` before goto causes `SecurityError: Access is denied` on `file://` pages. Sub-tests share a browser instance (single `chromium.launch`) but each use a fresh context; jsErrs are collected across all sub-tests.
+- For the iOS tip test (test 25): use `browser.newContext({ userAgent: IOS_UA })` where `IOS_UA` is an iPhone UA string. The dismiss key is `tip-v2` (bumped from `tip-v1` when tip content changed to 2-action shortcut). For the "tip hidden after dismiss on reload" sub-test, pre-seed localStorage via `page.addInitScript(() => localStorage.setItem('tip-v2', '1'))` BEFORE `page.goto()` — calling `page.evaluate()` before goto causes `SecurityError: Access is denied` on `file://` pages. Sub-tests share a browser instance (single `chromium.launch`) but each use a fresh context; jsErrs are collected across all sub-tests.
+- For the `?maps=` deep-link test (test 26): pass `pageUrl = BASE + '?maps=' + encodeURIComponent('https://maps.app.goo.gl/TEST')`. Mock `mapu` to return a full Maps URL and `43nn-pn8j` to return `[MAZZAT]`. Route must be set up in `setup` before `goto` so the load-time resolution is captured.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -484,7 +492,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.3**
+Current: **v1.14.4**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -507,6 +515,7 @@ Notable versions:
 - v1.14.1 — `user-select: none` on grade chip; README: git hook setup + test count fix (22→23, 61→70)
 - v1.14.2 — remove `maximum-scale=1.0` (accessibility); `html` background fills wide screens; `htmlEsc()` applied to all API data in `cardHtml` and error messages; `onMapsLink` error uses DOM instead of innerHTML for user URL; placard `inkMap` uses CSS vars (`var(--A/B/C)`) instead of duplicated hex; design skill brief corrected to DOHMH palette
 - v1.14.3 — iOS Shortcut tip: collapsible inline instructions shown only on iOS, dismissed via localStorage (`tip-v1`); test 25 added (9 assertions)
+- v1.14.4 — `?maps=URL` deep-link support: raw Maps URL passed as query param triggers resolver pipeline on load; iOS tip updated to 2-action shortcut (`?maps=` URL, no typing); dismiss key bumped to `tip-v2`; test 26 added
 
 ## Known-good Maps parsing baseline
 
