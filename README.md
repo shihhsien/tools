@@ -62,7 +62,7 @@ Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`
 node test.mjs
 ```
 
-37 cases, 128 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=` and `?maps=` — encoded and unencoded), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, and the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner).
+37 cases, 129 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=` and `?maps=` — encoded and unencoded), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, and the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner).
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
 
