@@ -91,6 +91,41 @@
   .tip-url { font-size: 11px; font-family: ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; word-break: break-all; color: #60a5fa; margin: 10px 0 4px; user-select: all; }
   .tip-install { display: block; margin: 12px 0 6px; padding: 11px 14px; font-size: 14px; font-weight: 600; background: var(--A); color: #fff; border-radius: 10px; text-align: center; text-decoration: none; }
   .tip-dismiss { width: auto; margin-top: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; background: var(--line); color: var(--muted); border-radius: 8px; }
+  /* === Score bar === */
+  .score-bar-wrap { margin: 8px 0 4px; display: flex; align-items: center; gap: 8px; }
+  .score-bar { flex: 1; position: relative; height: 4px; background: var(--line); border-radius: 2px; }
+  .score-fill { height: 100%; border-radius: 2px; }
+  .score-fill-A { background: var(--A); }
+  .score-fill-B { background: var(--B); }
+  .score-fill-C { background: var(--C); }
+  .score-fill-other { background: var(--gray); }
+  .score-tick { position: absolute; top: -3px; width: 1px; height: 10px; background: var(--muted); opacity: .4; }
+  .score-tick span { position: absolute; top: 11px; left: -4px; font-size: 9px; color: var(--muted); }
+  .score-note { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  /* === Violations === */
+  .no-viols { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .viols, .hist-wrap { margin-top: 8px; }
+  .viols summary, .hist-wrap summary { font-size: 12px; color: var(--muted); cursor: pointer; list-style: none; padding: 2px 0; user-select: none; }
+  .viols summary::-webkit-details-marker, .hist-wrap summary::-webkit-details-marker { display: none; }
+  .viols summary::before, .hist-wrap summary::before { content: '\25B8  '; }
+  .viols[open] summary::before, .hist-wrap[open] summary::before { content: '\25BE  '; }
+  .viols-body, .hist-body { margin-top: 6px; }
+  .viol-item { padding: 6px 0; border-top: 1px solid var(--line); }
+  .viol-flag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-bottom: 3px; }
+  .viol-crit { background: rgba(224,125,42,.15); color: var(--C); }
+  .viol-ncrit { background: var(--line); color: var(--muted); }
+  .viol-code { font-size: 10px; color: var(--gray); font-family: ui-monospace,monospace; margin-left: 4px; }
+  .viol-desc { font-size: 12px; color: var(--text); line-height: 1.45; }
+  /* === History === */
+  .hist-row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .hist-date { color: var(--muted); flex: 0 0 90px; }
+  .grade-hist { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; font-weight: 700; font-size: 11px; color: #fff; flex-shrink: 0; }
+  .grade-hist.A { background: var(--A); } .grade-hist.B { background: var(--B); } .grade-hist.C { background: var(--C); } .grade-hist.other { background: var(--gray); }
+  .hist-pts { color: var(--muted); flex: 0 0 auto; }
+  .hist-type { color: var(--muted); font-size: 11px; flex: 1; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hist-closed { font-size: 11px; font-weight: 600; color: #f87171; }
+  /* === Closure banner === */
+  .closure-banner { margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.25); }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
@@ -119,7 +154,7 @@
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.14.7</div>
+<div class="ver">v1.15.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -164,7 +199,7 @@ function buildUrl(name, loc) {
     where += ` and (upper(street) like '%${L}%' or upper(boro) like '%${L}%' or zipcode='${loc}')`;
   }
   const params = new URLSearchParams({
-    $select: 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,critical_flag,action',
+    $select: 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,violation_code,critical_flag,action',
     $where: where,
     $order: 'inspection_date DESC',
     $limit: '200',
@@ -191,32 +226,107 @@ async function getJSON(url) {
 function groupByRestaurant(rows) {
   const byId = {};
   for (const row of rows) {
-    const g = byId[row.camis] || (byId[row.camis] = { info: row, latest: row, graded: null });
+    const g = byId[row.camis] || (byId[row.camis] = { info: row, latest: row, graded: null, allRows: [] });
+    g.allRows.push(row);
     if (row.inspection_date > g.latest.inspection_date) g.latest = row;
     if (row.grade && (!g.graded || row.grade_date > g.graded.grade_date)) g.graded = row;
+  }
+  for (const g of Object.values(byId)) {
+    const latestDate = g.latest.inspection_date;
+    g.violations = g.allRows
+      .filter(r => r.inspection_date === latestDate && r.violation_description)
+      .map(r => ({ desc: r.violation_description, flag: r.critical_flag, code: r.violation_code }));
+    const byDate = {};
+    for (const r of g.allRows) {
+      if (!r.inspection_date) continue;
+      if (!byDate[r.inspection_date] || (r.grade && !byDate[r.inspection_date].grade))
+        byDate[r.inspection_date] = r;
+    }
+    g.history = Object.values(byDate)
+      .sort((a, b) => b.inspection_date.localeCompare(a.inspection_date))
+      .slice(0, 6);
+    const closures = g.allRows
+      .filter(r => r.action && r.action.includes('Closed by DOHMH'))
+      .sort((a, b) => b.inspection_date.localeCompare(a.inspection_date));
+    g.latestClosure = closures[0] || null;
+    if (g.latestClosure) {
+      const cd = g.latestClosure.inspection_date;
+      const reopened = g.allRows.some(r => r.action && r.action.toLowerCase().includes('re-opened') && r.inspection_date > cd);
+      g.currentlyClosed = !reopened;
+    } else {
+      g.currentlyClosed = false;
+    }
   }
   return Object.values(byId);
 }
 
-function cardHtml({ info, graded, latest }) {
+function scoreBarHtml(score, grade) {
+  const s = parseInt(score);
+  if (isNaN(s)) return '';
+  const pct = Math.min(100, Math.round(s / 40 * 100));
+  const gc = gradeClass(grade);
+  let note = '';
+  if (s <= 5 && grade === 'A') note = 'Excellent';
+  else if (s >= 11 && s <= 13) { const d = 14 - s; note = d + ' pt' + (d > 1 ? 's' : '') + ' from B'; }
+  else if (s >= 24 && s <= 27 && grade === 'B') { const d = 28 - s; note = d + ' pt' + (d > 1 ? 's' : '') + ' from C'; }
+  const noteHtml = note ? '<span class="score-note">' + htmlEsc(note) + '</span>' : '';
+  return '<div class="score-bar-wrap"><div class="score-bar"><div class="score-fill score-fill-' + gc + '" style="width:' + pct + '%"></div><div class="score-tick" style="left:35%"><span>B</span></div><div class="score-tick" style="left:70%"><span>C</span></div></div>' + noteHtml + '</div>';
+}
+
+function violationsHtml(violations) {
+  if (!violations || !violations.length)
+    return '<div class="no-viols">&#10003; No violations at last inspection</div>';
+  const crits = violations.filter(v => v.flag === 'Critical');
+  const countLabel = violations.length + ' violation' + (violations.length > 1 ? 's' : '') + (crits.length ? ' \xb7 ' + crits.length + ' critical' : '');
+  const sorted = violations.slice().sort((a, b) => (a.flag === 'Critical' ? -1 : 1));
+  const items = sorted.map(v => {
+    const isCrit = v.flag === 'Critical';
+    const flagHtml = (v.flag === 'Critical' || v.flag === 'Not Critical')
+      ? '<span class="viol-flag ' + (isCrit ? 'viol-crit' : 'viol-ncrit') + '">' + htmlEsc(v.flag) + '</span>'
+      : '';
+    const codeHtml = v.code ? '<span class="viol-code">' + htmlEsc(v.code) + '</span>' : '';
+    return '<div class="viol-item">' + flagHtml + codeHtml + '<div class="viol-desc">' + htmlEsc(v.desc) + '</div></div>';
+  }).join('');
+  return '<details class="viols"><summary class="viols-summary">' + htmlEsc(countLabel) + '</summary><div class="viols-body">' + items + '</div></details>';
+}
+
+function historyHtml(history) {
+  if (!history || history.length < 2) return '';
+  const rows = history.map(r => {
+    const closed = r.action && r.action.includes('Closed by DOHMH');
+    const g = r.grade || (closed ? '' : '—');
+    const sc = r.score != null ? r.score : '—';
+    const type = (r.inspection_type || '').replace('Cycle Inspection / ', '').replace(' Inspection', '').trim();
+    const gradeCell = closed
+      ? '<span class="hist-closed">Closed</span>'
+      : '<span class="grade-hist ' + gradeClass(g) + '">' + htmlEsc(g) + '</span>';
+    return '<div class="hist-row"><span class="hist-date">' + fmtDate(r.inspection_date) + '</span>' + gradeCell + '<span class="hist-pts">' + htmlEsc(String(sc)) + '</span><span class="hist-type">' + htmlEsc(type) + '</span></div>';
+  }).join('');
+  return '<details class="hist-wrap"><summary class="hist-summary">Inspection history</summary><div class="hist-body">' + rows + '</div></details>';
+}
+
+function closureBannerHtml(latestClosure, currentlyClosed) {
+  if (!currentlyClosed || !latestClosure) return '';
+  return '<div class="closure-banner">⚠ Closed by DOHMH \xb7 ' + fmtDate(latestClosure.inspection_date) + '</div>';
+}
+
+function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed }) {
   const grade = graded ? graded.grade : null;
-  const addr = htmlEsc(`${info.building || ''} ${info.street || ''}, ${info.boro || ''} ${info.zipcode || ''}`.replace(/\s+/g, ' ').trim());
+  const addr = htmlEsc(((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim());
   const gradeLine = graded
-    ? `Grade <b>${htmlEsc(graded.grade)}</b> · score ${htmlEsc(graded.score ?? '—')} · graded ${fmtDate(graded.grade_date)}`
-    : `<span class="pending">No letter grade on record yet</span> (latest score ${htmlEsc(latest.score ?? '—')})`;
-  const viol = latest.violation_description
-    ? `<div class="viol">Latest cited (${htmlEsc(latest.critical_flag || '')}): ${htmlEsc(latest.violation_description)}</div>`
-    : '';
-  return `
-    <div class="card">
-      <div class="top">
-        <div class="grade ${gradeClass(grade)}">${htmlEsc(grade || '?')}</div>
-        <div><div class="name">${htmlEsc(info.dba || 'Unknown')}</div><div class="addr">${addr}</div></div>
-      </div>
-      <div class="detail">${gradeLine}</div>
-      <div class="detail muted">Last inspection: ${fmtDate(latest.inspection_date)} · ${htmlEsc(latest.inspection_type || '')}</div>
-      ${viol}
-    </div>`;
+    ? 'Grade <b>' + htmlEsc(graded.grade) + '</b> \xb7 score ' + htmlEsc(graded.score ?? '—') + ' \xb7 graded ' + fmtDate(graded.grade_date)
+    : '<span class="pending">No letter grade on record yet</span> (latest score ' + htmlEsc(latest.score ?? '—') + ')';
+  const scoreBar = scoreBarHtml(graded ? graded.score : latest.score, grade);
+  return '<div class="card">'
+    + closureBannerHtml(latestClosure, currentlyClosed)
+    + '<div class="top"><div class="grade ' + gradeClass(grade) + '">' + htmlEsc(grade || '?') + '</div>'
+    + '<div><div class="name">' + htmlEsc(info.dba || 'Unknown') + '</div><div class="addr">' + addr + '</div></div></div>'
+    + '<div class="detail">' + gradeLine + '</div>'
+    + scoreBar
+    + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
+    + violationsHtml(violations)
+    + historyHtml(history)
+    + '</div>';
 }
 
 // Grade placard — the iconic NYC DOHMH window card, shown as hero for a single result.
