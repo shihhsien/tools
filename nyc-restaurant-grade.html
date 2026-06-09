@@ -89,6 +89,7 @@
   .tip-steps { margin: 8px 0 10px 16px; padding: 0; }
   .tip-steps li { margin-bottom: 5px; }
   .tip-url { font-size: 11px; font-family: ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; word-break: break-all; color: #60a5fa; margin: 10px 0 4px; user-select: all; }
+  .tip-install { display: block; margin: 12px 0 6px; padding: 11px 14px; font-size: 14px; font-weight: 600; background: var(--A); color: #fff; border-radius: 10px; text-align: center; text-decoration: none; }
   .tip-dismiss { width: auto; margin-top: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; background: var(--line); color: var(--muted); border-radius: 8px; }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
@@ -108,13 +109,8 @@
 <div id="tip-wrap" style="display:none">
   <button id="tip-toggle" class="tip-toggle">&#9656; Use from Maps on iPhone</button>
   <div id="tip-body" class="tip-body" style="display:none">
-    <div>Set up once &mdash; then <b>Share &rarr; NYC Grade</b> from any Maps listing. No typing &mdash; the grade looks up automatically.</div>
-    <ol class="tip-steps">
-      <li>Open <b>Shortcuts</b> &rarr; tap <b>+</b> &rarr; name it <b>NYC Grade</b></li>
-      <li>Tap <b>&#9432;</b> &rarr; enable <b>Show in Share Sheet</b> &rarr; URLs &rarr; Done</li>
-      <li>Add 2 actions: <b>Receive URLs</b> from Share Sheet &middot; <b>Open URLs</b> &rarr; paste the link below, then append the <b>Shortcut Input</b> variable:</li>
-    </ol>
-    <div class="tip-url">https://shihhsien.github.io/tools/nyc-restaurant-grade.html?maps=</div>
+    <div>Install once &mdash; then <b>Share &rarr; NYC Grade</b> from any Maps listing. Grade looks up automatically, no typing.</div>
+    <a id="tip-install" class="tip-install" href="https://www.icloud.com/shortcuts/64f5c0c7a2434507a619ebbaf08dc487" target="_blank" rel="noopener">Install Shortcut &#8599;</a>
     <button id="tip-dismiss" class="tip-dismiss">&#10003; Done &mdash; hide this</button>
   </div>
 </div>
@@ -123,7 +119,7 @@
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.14.4</div>
+<div class="ver">v1.14.5</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------

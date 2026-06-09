@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (26 cases, 84 assertions)
+- `.claude/skills/test/` — Playwright test skill (26 cases, 85 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -364,7 +364,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (26 cases, 84 assertions — all must pass):**
+**Required test cases (26 cases, 85 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -492,7 +492,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.4**
+Current: **v1.14.5**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -515,7 +515,8 @@ Notable versions:
 - v1.14.1 — `user-select: none` on grade chip; README: git hook setup + test count fix (22→23, 61→70)
 - v1.14.2 — remove `maximum-scale=1.0` (accessibility); `html` background fills wide screens; `htmlEsc()` applied to all API data in `cardHtml` and error messages; `onMapsLink` error uses DOM instead of innerHTML for user URL; placard `inkMap` uses CSS vars (`var(--A/B/C)`) instead of duplicated hex; design skill brief corrected to DOHMH palette
 - v1.14.3 — iOS Shortcut tip: collapsible inline instructions shown only on iOS, dismissed via localStorage (`tip-v1`); test 25 added (9 assertions)
-- v1.14.4 — `?maps=URL` deep-link support: raw Maps URL passed as query param triggers resolver pipeline on load; iOS tip updated to 2-action shortcut (`?maps=` URL, no typing); dismiss key bumped to `tip-v2`; test 26 added
+- v1.14.4 — `?maps=URL` deep-link support; iOS tip updated to 2-action shortcut; dismiss key bumped to tip-v2; test 26 added
+- v1.14.5 — `?maps=URL` deep-link support: raw Maps URL passed as query param triggers resolver pipeline on load; iOS tip updated to 2-action shortcut (`?maps=` URL, no typing); dismiss key bumped to `tip-v2`; test 26 added
 
 ## Known-good Maps parsing baseline
 
