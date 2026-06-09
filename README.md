@@ -58,13 +58,23 @@ git push origin main
 Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`):
 
 ```bash
-# Write + run the 22-case suite (see CLAUDE.md §Testing for the full harness)
+# Write + run the 24-case suite (see CLAUDE.md §Testing for the full harness)
 node test.mjs
 ```
 
-22 cases, 61 assertions covering: search, apostrophe/smart-quote normalization, all three Maps resolver paths, coordinate rejection, auto-retry, deep links, borough extraction, and progressive word-drop fallback.
+25 cases, 86 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry, deep links, borough extraction, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, and iOS Shortcut tip visibility/dismiss.
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
+
+### Git hooks (local clone only)
+
+The pre-push consistency check lives in `.githooks/`. Wire it up once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+After that, every `git push` runs `.githooks/check-consistency.sh` and aborts if the version string, test-case count, or assertion count are out of sync.
 
 ### Architecture notes
 

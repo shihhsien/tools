@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 23 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 25 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 23-case Playwright test suite, fix any failures, and confirm 70/70 assertions pass.
+Run the full 25-case Playwright test suite, fix any failures, and confirm 86/86 assertions pass.
 
 ## Setup
 
@@ -32,6 +32,8 @@ const mkRow = o => ({
   critical_flag:null, action:null, ...o
 });
 const MAZZAT = mkRow({ camis:'2', dba:'MAZZAT', boro:'Brooklyn', zipcode:'11231', score:'13',
+  grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
+const MAZZAT2 = mkRow({ camis:'9', dba:'MAZZAT UPTOWN', boro:'Manhattan', zipcode:'10001', score:'5',
   grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
 const MIAS = mkRow({ camis:'3', dba:"MIA'S BROOKLYN BAKERY", boro:'Brooklyn', zipcode:'11201' });
 
@@ -95,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 23 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 25 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -111,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `70 tests: 70 passed, 0 failed`
+Expected output ends with: `86 tests: 86 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -163,14 +165,23 @@ URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `
 ### Unicode normalization tests (tests 7, 21)
 `normalize()` in `search()` handles three codepoints: U+2018, U+2019, U+2032. Write these directly in Python heredocs — never via the Edit or Write tool, which will corrupt them. Test 7 needs intentional U+2019 in the input; test 21 needs intentional U+2032. Both verify the captured DOHMH URL contains `MIA''S`.
 
+### Apostrophe URL-encoding (tests 6, 7, 21, 22)
+`URLSearchParams` encodes `'` (U+0027) as `%27`, so `capturedUrl.includes("MIA''S")` always fails. Use `decodeURIComponent(capturedUrl).includes("MIA''S")` instead. Unlike spaces (encoded as `+`, which `decodeURIComponent` does NOT decode), apostrophes ARE recovered by `decodeURIComponent`.
+
 ### loc escaping test (test 22)
-`loc` goes through `normalize(...).replace(/'/g, "''")`. Test 22 fills `#loc` with `O'NEIL ST` and checks the captured URL contains `O''NEIL`. Use `decoded.includes("O''NEIL")` — same `decodeURIComponent` caveat about `+` applies.
+`loc` goes through `normalize(...).replace(/'/g, "''")`. Test 22 fills `#loc` with `O'NEIL ST` and checks the captured URL contains `O''NEIL`. Use `decodeURIComponent(capturedUrl).includes("O''NEIL")` — same apostrophe encoding as above.
 
 ### Placard tests (tests 4, 5, 5b)
 `placardHtml()` renders `.placard-wrap` only when `render()` gets exactly one group. Test 4 asserts `.placard-wrap` present on a single result; test 5 asserts absent on zero results; test 5b asserts absent when two cards render. Fixture `MAZZAT2` (a second distinct restaurant) drives the multi-result case.
 
+### XSS escaping test (test 24)
+`cardHtml` runs all DOHMH fields through `htmlEsc()`. Test 24 uses a fixture with `dba: '<img src=x onerror="window.__xss=1">EVIL CAFE'`. Seed `window.__xss = 0` via `page.addInitScript(() => { window.__xss = 0; })` in the `setup` step (before `goto`), then after the card renders assert: `window.__xss === 0` (payload never fired), `.card img` is `null` (no element injected), and `.name` textContent contains the literal `<img` substring (markup shown as text, not parsed). If any of these fail, `htmlEsc()` is missing or bypassed in `cardHtml`.
+
 ### Firebase junk-title test (test 23)
 A dead `maps.app.goo.gl` link resolves to Google's error page titled "Dynamic Link Not Found". `cleanTitle`'s `JUNK_TITLE` regex must reject it. Mock `microlink.io` → `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` → coordinates only, `jina` → empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
+
+### iOS Shortcut tip test (test 25)
+Test 25 uses `browser.newContext({ userAgent: IOS_UA })` (a real iPhone UA string). Multiple sub-tests share one `chromium.launch()` browser but each use a fresh context. **Critical:** pre-seeding localStorage for the "tip hidden after dismiss on reload" sub-test MUST use `page.addInitScript(() => localStorage.setItem('tip-v1', '1'))` BEFORE `page.goto()`. Calling `page.evaluate()` before goto on a `file://` page causes `SecurityError: Access is denied for this document`. The `addInitScript` hook runs before the page's own scripts, so the tip IIFE sees `tip-v1 === '1'` and hides the wrap immediately.
 
 ## Step 4 — Iterate
 

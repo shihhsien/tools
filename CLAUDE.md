@@ -7,10 +7,56 @@ inspection grades by restaurant name. Deployed on GitHub Pages.
 
 ---
 
+## Definition of done — keep memory & skills in sync (read this first)
+
+**Every change to this repo is incomplete until docs and skills match reality.**
+Do these as part of the same task, not as a follow-up — never end a turn having
+changed behaviour without also reconciling the items below. This is a standing
+instruction: apply it automatically on every change, without being asked.
+
+When you change **`nyc-restaurant-grade.html`**:
+1. **Bump the version** in `<div class="ver">vX.Y.Z</div>` (patch = fix, minor =
+   feature) and add a one-line entry under **Versioning → Notable versions**.
+2. **Update "Current:"** in the Versioning section to the new version.
+3. **Run the `test` skill** (`/test`) — it must end `N tests: N passed, 0 failed`.
+4. If you added/changed behaviour, **add or update a test case** and reflect it in
+   the **§Testing table** here AND the `test` skill (case count, assertion count,
+   harness fixtures, and any fix-note for a new gotcha).
+5. **Update the relevant architecture section** here (data flow, Maps parsing,
+   palette/placard, etc.) so the prose matches the code.
+6. If the change alters what the UI looks like, **run the `verify` skill** and
+   confirm the screenshots.
+
+When you change a **skill** (`.claude/skills/*/SKILL.md`): make sure its
+`description`, case/assertion counts, harness template (fixtures + helpers), and
+fix-notes still match the code and CLAUDE.md. The harness template must be
+self-contained — a future agent copies it verbatim, so every fixture a test
+references (e.g. `MAZZAT2`) must be declared in the template.
+
+When you change **architecture or learn a new gotcha**: record it in the matching
+section here (or under **Known gotchas**) in the same commit — don't leave it in
+your head or only in the chat.
+
+**Consistency invariants** (grep these when in doubt):
+- Version string in HTML footer == "Current:" in CLAUDE.md.
+- Test-case count and assertion count are identical in CLAUDE.md §Testing, the
+  `test` skill `description`, and its "Run the full N-case…" / "Expected output"
+  lines.
+- Every test case in the §Testing table has a corresponding case in the suite.
+
+---
+
 ## Files
 
 - `nyc-restaurant-grade.html` — the entire app (HTML + CSS + JS, one file)
+- `assets/` — PWA assets: `favicon.svg`, `favicon-16/32/48/180/192/512.png`, `manifest.json`
 - `.github/workflows/pages.yml` — deploys on push to `main`
+- `.githooks/check-consistency.sh` — enforces three invariants (see below)
+- `.githooks/pre-push` — runs the consistency check before every push
+- `.claude/settings.json` — runs the consistency check at every SessionStart
+- `.claude/skills/test/` — Playwright test skill (25 cases, 86 assertions)
+- `.claude/skills/verify/` — visual screenshot verification skill
+- `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
 ## Deployment
 
@@ -18,6 +64,20 @@ Push to `main` → GitHub Actions builds → GitHub Pages serves.
 No build step. The HTML file is served as-is.
 
 Dev branch: `claude/nyc-restaurant-grade-SPLv9`
+
+## Consistency guard
+
+`.githooks/check-consistency.sh` enforces three invariants automatically:
+
+1. HTML footer `vX.Y.Z` == `Current: **vX.Y.Z**` in this file
+2. Test-case count matches across CLAUDE.md §Testing, test skill `description:`, and skill "Run the full N-case" line
+3. Assertion count matches across CLAUDE.md §Testing and skill "Expected output" line
+
+It runs in two places:
+- **Pre-push** (via `.githooks/pre-push`) — aborts the push if anything is wrong. Git uses `.githooks/` via `core.hooksPath = .githooks` (set once per clone: `git config core.hooksPath .githooks`).
+- **SessionStart** (via `.claude/settings.json`) — surfaces a warning at the top of every Claude Code session on this repo.
+
+To run manually: `bash .githooks/check-consistency.sh`
 
 ---
 
@@ -104,6 +164,45 @@ cuisine type ("Oita Sushi") while DOHMH has only the trading name ("OITA").
 
 `?q=Name&loc=Borough` on the page URL auto-fills and searches on load.
 Used by the iOS Shortcut recipe to bypass the short-link problem entirely.
+
+---
+
+## Address extraction from resolved Maps links (research note)
+
+**Question investigated:** can the short-link resolvers be forced to return a full
+*address* (street, borough, ZIP), not just the name? **Findings — the resolved URL
+itself is the richest free, client-side source, not the resolver metadata:**
+
+1. **`/maps/place/NAME/` path often already contains the full address.** Place-card
+   shares encode it as comma segments: `/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/`.
+   `splitPlace` already splits on the first comma and mines the borough from the rest;
+   it does **not** currently extract the ZIP (a `/\b\d{5}\b/` regex on the trailing
+   segments would). Present for place-card shares, **absent** for dropped-pin /
+   coordinate shares (`/maps/place/lat,+lng/` — correctly rejected by `isName`).
+
+2. **`@lat,lng` is always present** on a resolved place URL. The only path to an
+   address when the place path is name-only is **reverse geocoding** the coordinates.
+   The free, no-key, CORS-enabled option is **Nominatim** (`nominatim.openstreetmap.org/reverse?format=jsonv2&lat=..&lon=..&zoom=18&addressdetails=1`)
+   → returns `address.postcode` (ZIP) and `address.borough`. Hard limit **1 req/sec**;
+   must send a `Referer` (browsers do automatically). The common "CORS error" is
+   misdiagnosed rate-limiting — the endpoint sends `Access-Control-Allow-Origin: *`.
+
+3. **`data=!...` protobuf yields no parseable address** — only coordinates (redundant
+   with `@`) and opaque place/feature/KG IDs that need a keyed Google API to expand.
+   Not worth decoding.
+
+4. **microlink & Jina add little address value for Maps targets.** Google's Maps page
+   is JS-hydrated and bot-blocked, so there's no clean address meta/JSON-LD to scrape.
+   `viaMicrolink` only runs `boroFromAddr(data.url)` today — it could also try
+   `boroFromAddr(data.title)` (free, the title sometimes carries the address), but
+   street-level data from these services is unreliable. microlink *does* support free
+   CSS-selector DOM scraping via `&data.X.selector=…&data.X.attr=textContent` GET params
+   (50/day, no key), but selectors against Google's obfuscated Maps DOM are brittle.
+
+**Recommended tiered design if this is ever built** (deferred — not implemented):
+parse the place path for street/borough/ZIP → else regex `@lat,lng` and call Nominatim
+→ keep microlink/Jina as name-only resolvers. Adding Nominatim means a new network
+dependency and a new mocked test case.
 
 ---
 
@@ -259,7 +358,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (23 cases, 70 assertions — all must pass):**
+**Required test cases (25 cases, 86 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -287,6 +386,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 21 | Prime symbol (U+2032) normalized and escaped for SoQL | captured URL has `MIA''S`; status has no `''` |
 | 22 | Apostrophe in `loc` field gets SoQL-escaped | captured URL has `O''NEIL` in the `$where` clause |
 | 23 | Firebase "Dynamic Link Not Found" error title rejected | DOHMH not called; `#q` stays empty; error with Open link |
+| 24 | XSS in API data is escaped, not executed | malicious `dba` `<img onerror>` → payload never fires; no injected `<img>`; `.name` shows literal markup as text |
+| 25 | iOS Shortcut tip (visibility, toggle, dismiss, persistence) | tip shown on iOS UA; starts collapsed; toggle opens/closes; dismiss hides + sets `localStorage`; hidden on reload after dismiss; hidden on non-iOS UA |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -296,6 +397,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For deep-link tests (test 17): pass `pageUrl = BASE + '?q=Name&loc=Borough'` to the test runner
 - For progressive fallback (test 20): check `u.includes('SUSHI')` (not `decodeURIComponent(u).includes('OITA SUSHI')`) — URLSearchParams encodes spaces as `+`, so the decoded URL still has `+` after `decodeURIComponent`. Shared counter variables must be declared outside both `setup` and `fn` closures (they run in separate scopes within `T()`).
 - For the Firebase junk-title test (test 23): mock `microlink.io` to return `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` to coordinates only, `jina` to empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
+- For tests 6, 7, 21, 22 (apostrophe/prime URL escaping): `URLSearchParams` encodes `'` as `%27`, so `capturedUrl.includes("MIA''S")` fails — use `decodeURIComponent(capturedUrl).includes("MIA''S")`. Unlike spaces (encoded as `+`, not decoded by `decodeURIComponent`), apostrophes ARE decoded by it.
+- For the XSS test (test 24): `dba` is `<img src=x onerror="window.__xss=1">EVIL CAFE`. Seed `window.__xss = 0` via `page.addInitScript` before load, then assert it stays `0` (the `onerror` never fires because `htmlEsc` turns `<` into `&lt;`), no `.card img` element exists, and `.name` textContent contains the literal `<img` string. Guards `htmlEsc()` in `cardHtml`.
+- For the iOS tip test (test 25): use `browser.newContext({ userAgent: IOS_UA })` where `IOS_UA` is an iPhone UA string. For the "tip hidden after dismiss on reload" sub-test, pre-seed localStorage via `page.addInitScript(() => localStorage.setItem('tip-v1', '1'))` BEFORE `page.goto()` — calling `page.evaluate()` before goto causes `SecurityError: Access is denied` on `file://` pages. Sub-tests share a browser instance (single `chromium.launch`) but each use a fresh context; jsErrs are collected across all sub-tests.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -380,7 +484,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.13.1**
+Current: **v1.14.3**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -399,6 +503,10 @@ Notable versions:
 - v1.12.9 — fix misleading "Google blocks it" error message; now says "Couldn't find a restaurant name in this link"
 - v1.13.0 — authentic NYC DOHMH placard palette (A blue / B green / C orange); `placardHtml` window-card hero shown for single results; pending color → muted grey
 - v1.13.1 — `cleanTitle` rejects Firebase error-page titles (`JUNK_TITLE`), fixing dead `maps.app.goo.gl` links that scraped "Dynamic Link Not Found" as a name
+- v1.14.0 — PWA assets: favicon (SVG + PNG set), apple-touch-icon, web app manifest; button transition + disabled state; input outline removed
+- v1.14.1 — `user-select: none` on grade chip; README: git hook setup + test count fix (22→23, 61→70)
+- v1.14.2 — remove `maximum-scale=1.0` (accessibility); `html` background fills wide screens; `htmlEsc()` applied to all API data in `cardHtml` and error messages; `onMapsLink` error uses DOM instead of innerHTML for user URL; placard `inkMap` uses CSS vars (`var(--A/B/C)`) instead of duplicated hex; design skill brief corrected to DOHMH palette
+- v1.14.3 — iOS Shortcut tip: collapsible inline instructions shown only on iOS, dismissed via localStorage (`tip-v1`); test 25 added (9 assertions)
 
 ## Known-good Maps parsing baseline
 

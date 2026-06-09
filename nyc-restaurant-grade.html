@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="NYC Grade">
 <title>NYC Grade</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png">
+<link rel="apple-touch-icon" href="assets/favicon-180.png">
+<link rel="manifest" href="assets/manifest.json">
 <style>
   /* Authentic DOHMH placard palette: blue A · green B · orange C */
   :root {
@@ -20,27 +26,28 @@
     --C:    #e07d2a; /* orange — was #dc2626 (traffic-light red)   */
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { overflow-x: hidden; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 60px; max-width: 600px; }
+  html { background: var(--bg); overflow-x: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0 auto; padding: 16px; padding-bottom: 60px; max-width: 600px; overflow-x: hidden; }
   a { color: #60a5fa; }
   h1 { font-size: 20px; margin: 4px 0 2px; }
   .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
   .row { display: flex; gap: 8px; }
   .row + .row { margin-top: 8px; }
-  input { flex: 1; width: 100%; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+  input { flex: 1; width: 100%; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); outline: none; }
   input::placeholder { color: var(--muted); }
   #maps-input { background: #1a1a2e; border-color: #3a3a5c; }
   .divider { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
   .divider span { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-  button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; }
+  button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
+  button:disabled { opacity: .45; cursor: default; }
   .status { font-size: 13px; color: var(--muted); margin: 14px 2px; }
   .status.err { color: #f87171; }
   .muted { color: var(--muted); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
   .top { display: flex; gap: 12px; align-items: center; }
-  .grade { flex: 0 0 auto; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 10px; font-weight: 700; font-size: 26px; color: #fff; }
+  .grade { flex: 0 0 auto; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 10px; font-weight: 700; font-size: 26px; color: #fff; user-select: none; }
   .grade.A{background:var(--A)} .grade.B{background:var(--B)} .grade.C{background:var(--C)} .grade.other{background:var(--gray);font-size:15px}
   .name { font-weight: 600; font-size: 16px; }
   .addr { font-size: 13px; color: var(--muted); margin-top: 2px; }
@@ -76,6 +83,13 @@
     font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
   }
   .placard-rule { width: 100%; height: 0; }
+  /* === iOS Shortcut tip === */
+  .tip-toggle { width: auto; margin: 6px 0 0; padding: 4px 0; font-size: 13px; font-weight: 500; background: none; color: var(--muted); text-align: left; }
+  .tip-body { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 6px; font-size: 13px; line-height: 1.5; }
+  .tip-steps { margin: 8px 0 10px 16px; padding: 0; }
+  .tip-steps li { margin-bottom: 5px; }
+  .tip-url { font-size: 11px; font-family: ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; word-break: break-all; color: #60a5fa; margin: 10px 0 4px; user-select: all; }
+  .tip-dismiss { width: auto; margin-top: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; background: var(--line); color: var(--muted); border-radius: 8px; }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
@@ -91,11 +105,25 @@
   <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
 </div>
 
+<div id="tip-wrap" style="display:none">
+  <button id="tip-toggle" class="tip-toggle">&#9656; Use from Maps on iPhone</button>
+  <div id="tip-body" class="tip-body" style="display:none">
+    <div>Set up once &mdash; then <b>Share &rarr; NYC Grade</b> from any Maps listing.</div>
+    <ol class="tip-steps">
+      <li>Open <b>Shortcuts</b> &rarr; tap <b>+</b> &rarr; name it <b>NYC Grade</b></li>
+      <li>Tap <b>&#9432;</b> &rarr; enable <b>Show in Share Sheet</b> &rarr; URLs &rarr; Done</li>
+      <li>Add 4 actions: <b>Receive URLs</b> from Share Sheet &middot; <b>Ask for Input</b> (prompt: &ldquo;Restaurant name?&rdquo;) &middot; <b>URL Encode</b> the input &middot; <b>Open URLs</b> &rarr; paste the URL below + the URL Encoded Input variable:</li>
+    </ol>
+    <div class="tip-url">https://shihhsien.github.io/tools/nyc-restaurant-grade.html?q=</div>
+    <button id="tip-dismiss" class="tip-dismiss">&#10003; Done &mdash; hide this</button>
+  </div>
+</div>
+
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.13.1</div>
+<div class="ver">v1.14.3</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -118,6 +146,7 @@ const decode = s => { try { return decodeURIComponent(s); } catch { return s; } 
 const setStatus = text => { statusEl.className = 'status'; statusEl.textContent = text; };
 const setError  = html => { statusEl.className = 'status err'; statusEl.innerHTML = html; };
 const gradeClass = g => (['A', 'B', 'C'].includes(g) ? g : 'other');
+const htmlEsc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const dbg = DEBUG ? msg => {
   const el = document.createElement('div');
   el.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`;
@@ -175,22 +204,21 @@ function groupByRestaurant(rows) {
 
 function cardHtml({ info, graded, latest }) {
   const grade = graded ? graded.grade : null;
-  const addr = `${info.building || ''} ${info.street || ''}, ${info.boro || ''} ${info.zipcode || ''}`
-    .replace(/\s+/g, ' ').trim();
+  const addr = htmlEsc(`${info.building || ''} ${info.street || ''}, ${info.boro || ''} ${info.zipcode || ''}`.replace(/\s+/g, ' ').trim());
   const gradeLine = graded
-    ? `Grade <b>${graded.grade}</b> · score ${graded.score ?? '—'} · graded ${fmtDate(graded.grade_date)}`
-    : `<span class="pending">No letter grade on record yet</span> (latest score ${latest.score ?? '—'})`;
+    ? `Grade <b>${htmlEsc(graded.grade)}</b> · score ${htmlEsc(graded.score ?? '—')} · graded ${fmtDate(graded.grade_date)}`
+    : `<span class="pending">No letter grade on record yet</span> (latest score ${htmlEsc(latest.score ?? '—')})`;
   const viol = latest.violation_description
-    ? `<div class="viol">Latest cited (${latest.critical_flag || ''}): ${latest.violation_description}</div>`
+    ? `<div class="viol">Latest cited (${htmlEsc(latest.critical_flag || '')}): ${htmlEsc(latest.violation_description)}</div>`
     : '';
   return `
     <div class="card">
       <div class="top">
-        <div class="grade ${gradeClass(grade)}">${grade || '?'}</div>
-        <div><div class="name">${info.dba || 'Unknown'}</div><div class="addr">${addr}</div></div>
+        <div class="grade ${gradeClass(grade)}">${htmlEsc(grade || '?')}</div>
+        <div><div class="name">${htmlEsc(info.dba || 'Unknown')}</div><div class="addr">${addr}</div></div>
       </div>
       <div class="detail">${gradeLine}</div>
-      <div class="detail muted">Last inspection: ${fmtDate(latest.inspection_date)} · ${latest.inspection_type || ''}</div>
+      <div class="detail muted">Last inspection: ${fmtDate(latest.inspection_date)} · ${htmlEsc(latest.inspection_type || '')}</div>
       ${viol}
     </div>`;
 }
@@ -200,7 +228,7 @@ function placardHtml(grade) {
   const g = (grade || '').toUpperCase();
   const known = ['A', 'B', 'C'].includes(g);
   const pending = !known;
-  const inkMap = { A: '#1f57a6', B: '#2f8b4e', C: '#e07d2a' };
+  const inkMap = { A: 'var(--A)', B: 'var(--B)', C: 'var(--C)' };
   const ink = pending ? '#1a1a1a' : inkMap[g];
   const borderPx = pending ? '1px' : '2px';
   const letterOrPending = pending
@@ -261,7 +289,7 @@ async function search() {
       }
     }
   } catch (e) {
-    setError(`Couldn't load (${e.message}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
+    setError(`Couldn't load (${htmlEsc(e.message)}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
   } finally {
     btn.disabled = false;
   }
@@ -396,8 +424,11 @@ async function onMapsLink() {
       if (attempt < 2) continue;
       btn.disabled = false;
       if (e.message !== 'app-link') return setError('Could not resolve link.');
-      const safeUrl = url.replace(/"/g, '&quot;');
-      setError(`Couldn't find a restaurant name in this link. <a href="${safeUrl}" target="_blank" rel="noopener">Open it ↗</a> — once the map loads, copy the full URL from the address bar and paste it here, or type the name above.`);
+      statusEl.className = 'status err';
+      statusEl.textContent = '';
+      const _link = document.createElement('a');
+      _link.href = url; _link.target = '_blank'; _link.rel = 'noopener'; _link.textContent = 'Open it ↗';
+      statusEl.append("Couldn't find a restaurant name in this link. ", _link, ' — once the map loads, copy the full URL from the address bar and paste it here, or type the name above.');
     }
   }
 }
@@ -406,6 +437,27 @@ btn.addEventListener('click', search);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
 mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });
+
+// iOS Shortcut tip — surfaces setup instructions once to iPhone/iPad users
+(function() {
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!isIOS || localStorage.getItem('tip-v1') === '1') return;
+  const wrap    = document.getElementById('tip-wrap');
+  const toggle  = document.getElementById('tip-toggle');
+  const body    = document.getElementById('tip-body');
+  const dismiss = document.getElementById('tip-dismiss');
+  wrap.style.display = '';
+  toggle.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    toggle.textContent = (open ? '▸' : '▾') + ' Use from Maps on iPhone';
+  });
+  dismiss.addEventListener('click', () => {
+    localStorage.setItem('tip-v1', '1');
+    wrap.style.display = 'none';
+  });
+})();
 
 // Deep link: ?q=Name (&loc=Borough) auto-fills and searches on load, so the
 // tool can be opened pre-filled from a bookmark or an iOS Shortcut.
