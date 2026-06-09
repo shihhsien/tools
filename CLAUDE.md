@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (26 cases, 85 assertions)
+- `.claude/skills/test/` — Playwright test skill (37 cases, 128 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -224,7 +224,7 @@ The `<script>` is organised into labelled sections:
 | Config & DOM | constants, cached element refs |
 | Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate` |
 | NYC DOHMH API | `buildUrl`, `getJSON` (with corsproxy.io fallback) |
-| Rendering | `groupByRestaurant`, `cardHtml`, `placardHtml`, `render` |
+| Rendering | `groupByRestaurant`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
 | Search | `search` |
 | Maps parsing | `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Wiring | `onMapsLink` (with auto-retry), event listeners, deep-link init on load |
@@ -251,6 +251,48 @@ renders a "Grade Pending" placard in near-black `#1a1a1a` with a thin border.
 
 The `.pending` status color is `var(--muted)` (grey), **not** `var(--B)` — amber
 no longer signals "pending" now that it means a genuine B grade.
+
+---
+
+## Card detail panels (v1.15.0)
+
+Each result card carries four data-dense panels below the grade line, all fed
+by fields `groupByRestaurant` collects per restaurant. `buildUrl`'s `$select`
+includes `violation_code` so the violation chips can show the code.
+
+`groupByRestaurant(rows)` folds rows by `camis` and, per restaurant, derives:
+- `allRows` — every inspection row for the restaurant
+- `violations` — rows on the **latest inspection date** that have a
+  `violation_description`, mapped to `{ desc, flag, code }`
+- `history` — one row per distinct `inspection_date` (graded row preferred when
+  a date has both), newest first, capped at the last **6**
+- `latestClosure` / `currentlyClosed` — most recent `action` containing
+  `Closed by DOHMH`; `currentlyClosed` is true unless a later row's `action`
+  includes `re-opened` (case-insensitive)
+
+The four render helpers:
+
+1. **`scoreBarHtml(score, grade)`** — a 4px bar with the fill width = `score/40`
+   (capped at 100%) and tint = `gradeClass(grade)` (`--A/--B/--C`). Tick marks at
+   35% (B, 14 pts) and 70% (C, 28 pts). A contextual `.score-note` appears near a
+   boundary: "Excellent" (A, ≤5), "N pt(s) from B" (11–13), "N pt(s) from C" (B, 24–27).
+   Returns `''` for a non-numeric score.
+
+2. **`violationsHtml(violations)`** — a collapsed `<details class="viols">`. Summary
+   shows `N violation(s)` plus `· M critical` when any are critical. Items are sorted
+   **critical-first**; each shows a flag chip (`.viol-crit` orange / `.viol-ncrit`
+   grey), the `.viol-code`, and the description. Empty list → a `.no-viols` checkmark
+   row instead ("✓ No violations at last inspection").
+
+3. **`historyHtml(history)`** — a collapsed `<details class="hist-wrap">` with one
+   `.hist-row` per inspection (date, grade chip or "Closed", score, shortened type).
+   Renders **only when `history.length >= 2`** (a single inspection adds nothing).
+
+4. **`closureBannerHtml(latestClosure, currentlyClosed)`** — a red `.closure-banner`
+   ("⚠ Closed by DOHMH · DATE") shown at the top of the card **only when
+   `currentlyClosed`**. This is the only place red is used in the app.
+
+All four run every field through `htmlEsc()` (XSS guard extends to the new fields).
 
 ---
 
@@ -367,7 +409,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (32 cases, 105 assertions — all must pass):**
+**Required test cases (37 cases, 128 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -404,6 +446,13 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 30 | splitPlace strips ZIP from name | mapu returns place URL with full address; `#q` = `MAZZAT`; `#loc` has borough; `#q` has no ZIP |
 | 31 | Multi-result status shows count | 2 fixtures → 2 cards; status includes `2 match` |
 | 32 | `?q=` deep link without loc | `?q=MAZZAT` only; `#q` = `MAZZAT`; `#loc` empty; card shown |
+| 33 | Score bar renders with grade-colored fill and boundary note | `.score-bar-wrap` present; `.score-fill-A` present; `.score-note` shows "N pt(s) from B" for score 13 |
+| 34 | Violation list — critical chips, count label, sorted critical-first | `.viols` present; summary "2 violations · 1 critical"; 2 `.viol-item`; first item is `.viol-crit`; `.viol-code` shown |
+| 35 | No violations → clean checkmark row | `.no-viols` present; no `.viols` details |
+| 36 | Inspection history timeline shown for multiple inspections | `.hist-wrap` present; N `.hist-row` matching inspection count |
+| 36b | History hidden for a single inspection | no `.hist-wrap` when only one inspection date |
+| 37 | Closure banner shown when currently closed | `.closure-banner` present; text mentions "Closed by DOHMH" |
+| 37b | Closure banner cleared after a later re-open action | no `.closure-banner` when a re-opened action follows the closure |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -421,6 +470,12 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For splitPlace ZIP test (test 30): mock mapu to return `{ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' }`. Assert `#q.toUpperCase() === 'MAZZAT'` (not the full comma-separated string), `#loc` contains `BROOKLYN`, and `#q` does not include `11231`.
 - For multi-result status test (test 31): mock DOHMH to return `[MAZZAT, MAZZAT2]`. Assert `(await p.$$('.card')).length === 2` and status includes `2 match`.
 - For bare `?q=` test (test 32): pass `pageUrl = BASE + '?q=MAZZAT'` with no `&loc=`. Assert `#loc` value is empty string.
+- For the v1.15.0 card-detail tests (33–37b): these are plain DOHMH searches (`#q` fill + `#go` click) — no resolvers. The `mkRow` fixture needs a `violation_code: null` default. Multi-row fixtures share one `camis` so `groupByRestaurant` folds them into a single restaurant; rows for the same `inspection_date` become the violation list, distinct dates become history.
+- For the score-bar test (test 33): use `score:'13'` (one point under the B threshold) so `scoreBarHtml` emits the "1 pt from B" note. Assert `.score-fill-A` exists (fill class follows `gradeClass(grade)`) and `.score-note` text matches `/from B/`.
+- For the violations test (test 34): two rows, same `camis`/`inspection_date`, one `critical_flag:'Critical'` and one `'Not Critical'`, each with a `violation_code` and `violation_description`. Assert `.viols-summary` text is `2 violations · 1 critical`, exactly 2 `.viol-item`, and `.viol-item:first-child .viol-flag` has class `viol-crit` (critical sorted first).
+- For the clean test (test 35): single row with `violation_description:null` → `groupByRestaurant` produces an empty `violations` array → `violationsHtml` returns the `.no-viols` checkmark row, no `.viols` `<details>`.
+- For the history tests (36/36b): `historyHtml` renders only when `history.length >= 2`. Test 36 uses three rows with distinct `inspection_date`s (assert 3 `.hist-row`); test 36b uses a single inspection (assert no `.hist-wrap`).
+- For the closure tests (37/37b): closure is detected by `action.includes('Closed by DOHMH')` and cleared only if a later row's `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37 has a lone closure row (assert `.closure-banner` present); test 37b adds a later re-opened row (assert `.closure-banner` absent).
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -532,7 +587,7 @@ Notable versions:
 - v1.14.5 — `?maps=URL` deep-link support: raw Maps URL passed as query param triggers resolver pipeline on load; iOS tip updated to 2-action shortcut (`?maps=` URL, no typing); dismiss key bumped to `tip-v2`; test 26 added
 - v1.14.6 — raw-string parsing for `?maps=` deep link (`location.search.startsWith` + `.slice(6)`) so Shortcuts can pass an unencoded Maps URL without a URL Encode action
 - v1.14.7 — updated iOS Shortcut install link to 4-action version (Text conversion + URL Encode workaround for Shortcuts URL-type encoding bug)
-- v1.15.0 — violation list with critical/not-critical chips and violation code; score bar with A/B/C threshold markers and contextual notes; inspection history timeline (last 6 inspections); closure banner when restaurant is currently closed by DOHMH
+- v1.15.0 — violation list with critical/not-critical chips and violation code; score bar with A/B/C threshold markers and contextual notes; inspection history timeline (last 6 inspections); closure banner when restaurant is currently closed by DOHMH; tests 33–37b added (37 cases, 128 assertions)
 
 ## Known-good Maps parsing baseline
 

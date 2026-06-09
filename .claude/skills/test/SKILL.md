@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 32 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 37 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 32-case Playwright test suite, fix any failures, and confirm 105/105 assertions pass.
+Run the full 37-case Playwright test suite, fix any failures, and confirm 128/128 assertions pass.
 
 ## Setup
 
@@ -29,7 +29,7 @@ const mkRow = o => ({
   zipcode:'10001', grade:'A', score:'5',
   grade_date:'2025-01-01T00:00:00.000', inspection_date:'2025-01-01T00:00:00.000',
   inspection_type:'Cycle Inspection', violation_description:null,
-  critical_flag:null, action:null, ...o
+  critical_flag:null, action:null, violation_code:null, ...o
 });
 const MAZZAT = mkRow({ camis:'2', dba:'MAZZAT', boro:'Brooklyn', zipcode:'11231', score:'13',
   grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 32 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 37 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `105 tests: 105 passed, 0 failed`
+Expected output ends with: `128 tests: 128 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -196,6 +196,15 @@ Use `await p.$$('.card')` to get the NodeList; assert `.length === 2`. Assert `s
 
 ### Bare ?q= deep-link test (test 32)
 Pass `pageUrl = BASE + '?q=MAZZAT'` (no `&loc=`). After load, assert `#loc` value is `''` (empty string, not undefined).
+
+### Card-detail tests (33–37b) — v1.15.0 panels
+These are plain DOHMH searches (`page.fill('#q', NAME)` + `page.click('#go')` + `waitForSelector('.card')`) — no resolvers, no `triggerMaps`. Mock only `43nn-pn8j`. `mkRow` defaults `violation_code:null`. Multi-row fixtures share one `camis` so `groupByRestaurant` folds them: rows on the same `inspection_date` become violations, distinct dates become history. The `<details>` panels start collapsed, but their children are in the DOM — `$`/`$$` find them while hidden.
+
+- **Test 33 (score bar):** one row, `score:'13'`, `grade:'A'`. Assert `.score-bar-wrap` and `.score-fill-A` present, and `.score-note` text matches `/from B/` (13 is 1 pt under the B threshold).
+- **Test 34 (violations):** two rows, same `camis`/`inspection_date`, one `critical_flag:'Critical'` and one `'Not Critical'`, each with `violation_code` + `violation_description`. Assert `.viols` present, `.viols-summary` text is `2 violations · 1 critical`, exactly 2 `.viol-item`, `.viol-item:first-child .viol-flag` has class `viol-crit` (critical sorted first), and `.viol-code` non-empty.
+- **Test 35 (clean):** one row with `violation_description:null`. Assert `.no-viols` present and `.viols` absent.
+- **Tests 36/36b (history):** `historyHtml` renders only when `history.length >= 2`. Test 36: three rows with distinct `inspection_date`s → assert `.hist-wrap` present and 3 `.hist-row`. Test 36b: single inspection → assert `.hist-wrap` absent.
+- **Tests 37/37b (closure):** closure = `action.includes('Closed by DOHMH')`, cleared only by a later row whose `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37: lone closure row → assert `.closure-banner` present and its text matches `/Closed by DOHMH/`. Test 37b: closure row + later re-opened row → assert `.closure-banner` absent.
 
 ## Step 4 — Iterate
 
