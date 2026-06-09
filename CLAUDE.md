@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (24 cases, 77 assertions)
+- `.claude/skills/test/` — Playwright test skill (25 cases, 86 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -358,7 +358,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (24 cases, 77 assertions — all must pass):**
+**Required test cases (25 cases, 86 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -387,6 +387,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 22 | Apostrophe in `loc` field gets SoQL-escaped | captured URL has `O''NEIL` in the `$where` clause |
 | 23 | Firebase "Dynamic Link Not Found" error title rejected | DOHMH not called; `#q` stays empty; error with Open link |
 | 24 | XSS in API data is escaped, not executed | malicious `dba` `<img onerror>` → payload never fires; no injected `<img>`; `.name` shows literal markup as text |
+| 25 | iOS Shortcut tip (visibility, toggle, dismiss, persistence) | tip shown on iOS UA; starts collapsed; toggle opens/closes; dismiss hides + sets `localStorage`; hidden on reload after dismiss; hidden on non-iOS UA |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -398,6 +399,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the Firebase junk-title test (test 23): mock `microlink.io` to return `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` to coordinates only, `jina` to empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
 - For tests 6, 7, 21, 22 (apostrophe/prime URL escaping): `URLSearchParams` encodes `'` as `%27`, so `capturedUrl.includes("MIA''S")` fails — use `decodeURIComponent(capturedUrl).includes("MIA''S")`. Unlike spaces (encoded as `+`, not decoded by `decodeURIComponent`), apostrophes ARE decoded by it.
 - For the XSS test (test 24): `dba` is `<img src=x onerror="window.__xss=1">EVIL CAFE`. Seed `window.__xss = 0` via `page.addInitScript` before load, then assert it stays `0` (the `onerror` never fires because `htmlEsc` turns `<` into `&lt;`), no `.card img` element exists, and `.name` textContent contains the literal `<img` string. Guards `htmlEsc()` in `cardHtml`.
+- For the iOS tip test (test 25): use `browser.newContext({ userAgent: IOS_UA })` where `IOS_UA` is an iPhone UA string. For the "tip hidden after dismiss on reload" sub-test, pre-seed localStorage via `page.addInitScript(() => localStorage.setItem('tip-v1', '1'))` BEFORE `page.goto()` — calling `page.evaluate()` before goto causes `SecurityError: Access is denied` on `file://` pages. Sub-tests share a browser instance (single `chromium.launch`) but each use a fresh context; jsErrs are collected across all sub-tests.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -482,7 +484,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.2**
+Current: **v1.14.3**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -504,6 +506,7 @@ Notable versions:
 - v1.14.0 — PWA assets: favicon (SVG + PNG set), apple-touch-icon, web app manifest; button transition + disabled state; input outline removed
 - v1.14.1 — `user-select: none` on grade chip; README: git hook setup + test count fix (22→23, 61→70)
 - v1.14.2 — remove `maximum-scale=1.0` (accessibility); `html` background fills wide screens; `htmlEsc()` applied to all API data in `cardHtml` and error messages; `onMapsLink` error uses DOM instead of innerHTML for user URL; placard `inkMap` uses CSS vars (`var(--A/B/C)`) instead of duplicated hex; design skill brief corrected to DOHMH palette
+- v1.14.3 — iOS Shortcut tip: collapsible inline instructions shown only on iOS, dismissed via localStorage (`tip-v1`); test 25 added (9 assertions)
 
 ## Known-good Maps parsing baseline
 

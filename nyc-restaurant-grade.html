@@ -83,6 +83,13 @@
     font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
   }
   .placard-rule { width: 100%; height: 0; }
+  /* === iOS Shortcut tip === */
+  .tip-toggle { width: auto; margin: 6px 0 0; padding: 4px 0; font-size: 13px; font-weight: 500; background: none; color: var(--muted); text-align: left; }
+  .tip-body { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 6px; font-size: 13px; line-height: 1.5; }
+  .tip-steps { margin: 8px 0 10px 16px; padding: 0; }
+  .tip-steps li { margin-bottom: 5px; }
+  .tip-url { font-size: 11px; font-family: ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; word-break: break-all; color: #60a5fa; margin: 10px 0 4px; user-select: all; }
+  .tip-dismiss { width: auto; margin-top: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; background: var(--line); color: var(--muted); border-radius: 8px; }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
@@ -98,11 +105,25 @@
   <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
 </div>
 
+<div id="tip-wrap" style="display:none">
+  <button id="tip-toggle" class="tip-toggle">&#9656; Use from Maps on iPhone</button>
+  <div id="tip-body" class="tip-body" style="display:none">
+    <div>Set up once &mdash; then <b>Share &rarr; NYC Grade</b> from any Maps listing.</div>
+    <ol class="tip-steps">
+      <li>Open <b>Shortcuts</b> &rarr; tap <b>+</b> &rarr; name it <b>NYC Grade</b></li>
+      <li>Tap <b>&#9432;</b> &rarr; enable <b>Show in Share Sheet</b> &rarr; URLs &rarr; Done</li>
+      <li>Add 4 actions: <b>Receive URLs</b> from Share Sheet &middot; <b>Ask for Input</b> (prompt: &ldquo;Restaurant name?&rdquo;) &middot; <b>URL Encode</b> the input &middot; <b>Open URLs</b> &rarr; paste the URL below + the URL Encoded Input variable:</li>
+    </ol>
+    <div class="tip-url">https://shihhsien.github.io/tools/nyc-restaurant-grade.html?q=</div>
+    <button id="tip-dismiss" class="tip-dismiss">&#10003; Done &mdash; hide this</button>
+  </div>
+</div>
+
 <button id="go">Look up grade</button>
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.14.2</div>
+<div class="ver">v1.14.3</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -416,6 +437,27 @@ btn.addEventListener('click', search);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
 mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });
+
+// iOS Shortcut tip — surfaces setup instructions once to iPhone/iPad users
+(function() {
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!isIOS || localStorage.getItem('tip-v1') === '1') return;
+  const wrap    = document.getElementById('tip-wrap');
+  const toggle  = document.getElementById('tip-toggle');
+  const body    = document.getElementById('tip-body');
+  const dismiss = document.getElementById('tip-dismiss');
+  wrap.style.display = '';
+  toggle.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    toggle.textContent = (open ? '▸' : '▾') + ' Use from Maps on iPhone';
+  });
+  dismiss.addEventListener('click', () => {
+    localStorage.setItem('tip-v1', '1');
+    wrap.style.display = 'none';
+  });
+})();
 
 // Deep link: ?q=Name (&loc=Borough) auto-fills and searches on load, so the
 // tool can be opened pre-filled from a bookmark or an iOS Shortcut.

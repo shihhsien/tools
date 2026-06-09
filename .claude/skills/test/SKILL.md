@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 24 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 25 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 24-case Playwright test suite, fix any failures, and confirm 77/77 assertions pass.
+Run the full 25-case Playwright test suite, fix any failures, and confirm 86/86 assertions pass.
 
 ## Setup
 
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 23 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 25 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `77 tests: 77 passed, 0 failed`
+Expected output ends with: `86 tests: 86 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -179,6 +179,9 @@ URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `
 
 ### Firebase junk-title test (test 23)
 A dead `maps.app.goo.gl` link resolves to Google's error page titled "Dynamic Link Not Found". `cleanTitle`'s `JUNK_TITLE` regex must reject it. Mock `microlink.io` → `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` → coordinates only, `jina` → empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
+
+### iOS Shortcut tip test (test 25)
+Test 25 uses `browser.newContext({ userAgent: IOS_UA })` (a real iPhone UA string). Multiple sub-tests share one `chromium.launch()` browser but each use a fresh context. **Critical:** pre-seeding localStorage for the "tip hidden after dismiss on reload" sub-test MUST use `page.addInitScript(() => localStorage.setItem('tip-v1', '1'))` BEFORE `page.goto()`. Calling `page.evaluate()` before goto on a `file://` page causes `SecurityError: Access is denied for this document`. The `addInitScript` hook runs before the page's own scripts, so the tip IIFE sees `tip-v1 === '1'` and hides the wrap immediately.
 
 ## Step 4 — Iterate
 
