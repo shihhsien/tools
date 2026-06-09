@@ -215,6 +215,74 @@ dependency and a new mocked test case.
 
 ---
 
+## Deep research findings (June 2026) — next-step candidates
+
+Verified facts from a 5-agent fan-out research run (sources in session transcript):
+
+**Data enrichment:**
+- **`43nn-pn8j` already has unselected columns**: `latitude`, `longitude`, `phone`,
+  `cuisine_description`, `community_board`, `council_district`, `census_tract`,
+  `bin`, `bbl`, `nta`. Widening `$select` is the cheapest enrichment — no new
+  dependency. Coordinates from the dataset also remove any geocoding need for
+  forward enrichment (Overpass bbox, "open in Maps" pin).
+- **Nominatim** (re-verified 2026): 1 req/s, browser Referer satisfies the ID
+  requirement, CORS on success but **absent on 403/429** (rate-limit looks like a
+  CORS error), returns `postcode`; for borough check `address.borough || suburb ||
+  city_district` + county→borough map. Requires ODbL attribution in footer.
+- **Photon** (`photon.komoot.io/reverse`) — best no-key fallback, CORS-open,
+  returns `postcode`; demo server, no SLA.
+- **BigDataCloud is DISALLOWED for this app**: its fair-use policy permits only
+  live device-GPS coordinates; feeding it coordinates parsed from a Maps URL
+  violates policy (HTTP 402 + IP bans).
+- **US Census geocoder**: reverse returns geographies only (no street/ZIP), JSONP
+  not CORS — not useful.
+- **Socrata sends CORS `*` platform-wide** (incl. data.ny.gov) → NYS Liquor
+  Authority active-licenses joinable by address; data.ny.gov also mirrors
+  `43nn-pn8j` (free failover instead of corsproxy.io). Keyless Socrata shares a
+  throttled per-IP pool; a free app token lifts to ~1000 req/hr.
+- **Overpass**: main instance fine from browsers (residential IPs) but has been
+  blocking cloud-IP ranges in 2026; `overpass.kumi.systems` mirror historically
+  lacked CORS headers — must live-check before use. NYC `opening_hours`/`website`
+  tag coverage is unmeasured; treat as best-effort.
+
+**Maps link reliability (2026 status):**
+- `maps.app.goo.gl` still alive and redirecting (verified via GitHub issues from
+  Jan–May 2026). No new Google API or client-side trick exists; whatwg/fetch #601
+  (expose redirect Location) still unadopted.
+- mapu.retiolus.net: alive; single-hobbyist project (source:
+  codeberg.org/retiolus/gmapsUnshortener), ~zero adoption — highest longevity risk.
+- microlink: still 50 req/day free; rotating-proxy (which dodges IP blocks) is
+  Pro-only (€39/mo).
+- Jina Reader: keyless = 20 req/min; free API key = 200 RPM. Still viable.
+- **Cloudflare Workers remains the right self-host plan**: free tier still 100k
+  req/day, ~zero cold starts (would eliminate the auto-retry hack for the Worker
+  path), no card needed. Avoid Deno Deploy (Classic shuts down July 20 2026 +
+  company turbulence); Cloudflare Snippets are paid-plan-only; fly.io has no free
+  tier. Val Town (~100k runs/day free) is a fine second resolver for diversity.
+
+**Accessibility (contrast math locally verified):**
+- **White-on-C-orange (`#e07d2a`) = 2.94:1 — fails even the 3:1 large-text
+  minimum.** Affects the C grade chip and C placard letter. Darkening the orange
+  slightly (≈`#d97320` or darker) clears 3:1.
+- Small `.grade-hist` chips (white text, not large) need 4.5:1: B green = 4.26
+  (fail), C orange = 2.94 (fail). A blue = 7.07 (pass).
+- A-blue `.score-fill` on card = 2.47:1 (< 3:1 UI-component guideline; arguably
+  exempt since the numeric score is adjacent text).
+- `#status` should get `role="status"` (it already exists in the DOM at load —
+  the hard part is done). VoiceOver won't re-announce identical strings (append
+  zero-width space to force re-announcement). Do NOT add `role="button"`/
+  `aria-expanded` to `<summary>` — native semantics already map them; extra ARIA
+  causes double announcements. Keep a visible disclosure marker.
+- iOS: home-screen web apps get **isolated localStorage** — `tip-v2` dismissed in
+  Safari won't carry into a standalone instance. iOS 26 opens every
+  added-to-home-screen site as a web app by default. Shortcuts "Open URLs"
+  appears to honor the default-browser setting (explains "works in Chrome, not
+  Safari" — likely the user's default browser is Chrome; a Safari-specific
+  failure is more likely a stale standalone instance than an engine difference,
+  since iOS Chrome is WebKit).
+
+---
+
 ## JS code map
 
 The `<script>` is organised into labelled sections:
@@ -302,6 +370,18 @@ All four run every field through `htmlEsc()` (XSS guard extends to the new field
 
 `maps.app.goo.gl` links return HTTP 302 for real browser requests and
 HTTP 403 (`x-deny-reason: host_not_allowed`) for datacenter/bot requests.
+
+> **Correction (June 2026 deep research):** the `x-deny-reason: host_not_allowed`
+> 403 above was observed **from inside the Claude Code sandbox**, and that exact
+> header is the signature of the **Anthropic sandbox egress proxy**, not Google
+> (it appears verbatim in anthropics/claude-code issue reports about the proxy,
+> e.g. issue #41741). Public GitHub projects resolve `maps.app.goo.gl` redirects
+> from GCP, Vercel, and Cloudflare Worker datacenter IPs with a browser UA and no
+> 403 handling (e.g. ElmerProject/CoordinatesTool worker.js, htongyai/Wonwon).
+> Whether Google blocks *some* datacenter ranges is unproven either way — but the
+> Cloudflare Worker plan below is more likely to work than this section implies.
+> **Never test this from the sandbox; deploy and test from a real browser.**
+> The CORS-proxy blocklists below remain independently true.
 
 Every major free CORS proxy explicitly blocklists `maps.app.goo.gl`:
 - `allorigins.win` — blocked
