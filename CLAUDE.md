@@ -367,7 +367,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (26 cases, 85 assertions — all must pass):**
+**Required test cases (32 cases, 111 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -386,7 +386,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 12 | Short link: viaMapu success | mock mapu → card shown |
 | 13 | Short link: viaMicrolink success | mock microlink → card shown |
 | 14 | Short link: viaJina success | mock jina text → card shown |
-| 15 | Auto-retry on cold start | mapu called twice; card shown on 2nd attempt |
+| 15 | Auto-retry on cold start (mapu) | mapu called twice; card shown on 2nd attempt |
 | 16 | All resolvers fail → error with Open link | error text + link to original URL |
 | 17 | Deep link `?q=Name&loc=Borough` | both fields pre-filled; auto-searched |
 | 18 | Borough extracted from resolver place name | `Mazzat, Brooklyn, NY` splits to name=Mazzat, loc=BROOKLYN |
@@ -397,7 +397,13 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 23 | Firebase "Dynamic Link Not Found" error title rejected | DOHMH not called; `#q` stays empty; error with Open link |
 | 24 | XSS in API data is escaped, not executed | malicious `dba` `<img onerror>` → payload never fires; no injected `<img>`; `.name` shows literal markup as text |
 | 25 | iOS Shortcut tip (visibility, toggle, dismiss, persistence) | tip shown on iOS UA; starts collapsed; toggle opens/closes; dismiss hides + sets `localStorage`; hidden on reload after dismiss; hidden on non-iOS UA |
-| 26 | `?maps=URL` deep link triggers resolution on load | pass short link as `?maps=`; mock mapu → card shown; name correct |
+| 26 | `?maps=URL` deep link — unencoded (raw Shortcuts pass-through) | pass unencoded short link as `?maps=`; mock mapu → card shown; name correct |
+| 27 | `?maps=URL` deep link — encoded (4-action Shortcuts workflow) | pass `encodeURIComponent(shortLink)` as `?maps=`; mock mapu → card shown; status "1 match" |
+| 28 | viaMicrolink cold-start retry | mapu/jina always fail; microlink: fail call 1, succeed call 2; `mlCalls === 2`; card shown |
+| 29 | viaJina cold-start retry | mapu/microlink always fail; jina: fail call 1, succeed call 2; `jinaCalls === 2`; card shown |
+| 30 | splitPlace strips ZIP from name | mapu returns place URL with full address; `#q` = `MAZZAT`; `#loc` has borough; `#q` has no ZIP |
+| 31 | Multi-result status shows count | 2 fixtures → 2 cards; status includes `2 match` |
+| 32 | `?q=` deep link without loc | `?q=MAZZAT` only; `#q` = `MAZZAT`; `#loc` empty; card shown |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -409,8 +415,12 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the Firebase junk-title test (test 23): mock `microlink.io` to return `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` to coordinates only, `jina` to empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
 - For tests 6, 7, 21, 22 (apostrophe/prime URL escaping): `URLSearchParams` encodes `'` as `%27`, so `capturedUrl.includes("MIA''S")` fails — use `decodeURIComponent(capturedUrl).includes("MIA''S")`. Unlike spaces (encoded as `+`, not decoded by `decodeURIComponent`), apostrophes ARE decoded by it.
 - For the XSS test (test 24): `dba` is `<img src=x onerror="window.__xss=1">EVIL CAFE`. Seed `window.__xss = 0` via `page.addInitScript` before load, then assert it stays `0` (the `onerror` never fires because `htmlEsc` turns `<` into `&lt;`), no `.card img` element exists, and `.name` textContent contains the literal `<img` string. Guards `htmlEsc()` in `cardHtml`.
-- For the iOS tip test (test 25): use `browser.newContext({ userAgent: IOS_UA })` where `IOS_UA` is an iPhone UA string. The dismiss key is `tip-v2` (bumped from `tip-v1` when tip content changed to 2-action shortcut). For the "tip hidden after dismiss on reload" sub-test, pre-seed localStorage via `page.addInitScript(() => localStorage.setItem('tip-v2', '1'))` BEFORE `page.goto()` — calling `page.evaluate()` before goto causes `SecurityError: Access is denied` on `file://` pages. Sub-tests share a browser instance (single `chromium.launch`) but each use a fresh context; jsErrs are collected across all sub-tests.
-- For the `?maps=` deep-link test (test 26): pass `pageUrl = BASE + '?maps=' + encodeURIComponent('https://maps.app.goo.gl/TEST')`. Mock `mapu` to return a full Maps URL and `43nn-pn8j` to return `[MAZZAT]`. Route must be set up in `setup` before `goto` so the load-time resolution is captured.
+- For the iOS tip test (test 25): use `browser.newContext({ userAgent: IOS_UA })` where `IOS_UA` is an iPhone UA string. The dismiss key is `tip-v2`. For the "tip hidden after dismiss on reload" sub-test, pre-seed localStorage via `page.addInitScript(() => localStorage.setItem('tip-v2', '1'))` BEFORE `page.goto()` — calling `page.evaluate()` before goto causes `SecurityError: Access is denied` on `file://` pages. Sub-tests share a browser instance (single `chromium.launch`) but each use a fresh context; jsErrs are collected across all sub-tests. **Critical for dismiss sub-test:** `#tip-dismiss` is inside `#tip-body` which starts hidden — click `#tip-toggle` first to open the body, wait for it to be visible, then click `#tip-dismiss`. Clicking a hidden button times out.
+- For the `?maps=` deep-link tests (26–27): set up route in `setup` before `goto` so load-time resolution is captured. Test 26 passes the URL unencoded (`BASE + '?maps=https://maps.app.goo.gl/TEST'`); test 27 passes it encoded (`BASE + '?maps=' + encodeURIComponent('https://maps.app.goo.gl/TEST')`). Both should work since the app does `decodeURIComponent()` on the value.
+- For microlink/jina retry tests (28–29): mock the other two resolvers as always-fail (`E`); use a shared counter outside setup/fn; return `E` on call 1 and success on call 2. `Promise.any` is called twice (once per `onMapsLink` attempt), so counters accumulate across both.
+- For splitPlace ZIP test (test 30): mock mapu to return `{ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' }`. Assert `#q.toUpperCase() === 'MAZZAT'` (not the full comma-separated string), `#loc` contains `BROOKLYN`, and `#q` does not include `11231`.
+- For multi-result status test (test 31): mock DOHMH to return `[MAZZAT, MAZZAT2]`. Assert `(await p.$$('.card')).length === 2` and status includes `2 match`.
+- For bare `?q=` test (test 32): pass `pageUrl = BASE + '?q=MAZZAT'` with no `&loc=`. Assert `#loc` value is empty string.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js

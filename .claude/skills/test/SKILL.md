@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 26 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 32 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 26-case Playwright test suite, fix any failures, and confirm 85/85 assertions pass.
+Run the full 32-case Playwright test suite, fix any failures, and confirm 111/111 assertions pass.
 
 ## Setup
 
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 26 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 32 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `85 tests: 85 passed, 0 failed`
+Expected output ends with: `111 tests: 111 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -181,7 +181,21 @@ URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `
 A dead `maps.app.goo.gl` link resolves to Google's error page titled "Dynamic Link Not Found". `cleanTitle`'s `JUNK_TITLE` regex must reject it. Mock `microlink.io` → `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` → coordinates only, `jina` → empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
 
 ### iOS Shortcut tip test (test 25)
-Test 25 uses `browser.newContext({ userAgent: IOS_UA })` (a real iPhone UA string). Multiple sub-tests share one `chromium.launch()` browser but each use a fresh context. **Critical:** pre-seeding localStorage for the "tip hidden after dismiss on reload" sub-test MUST use `page.addInitScript(() => localStorage.setItem('tip-v1', '1'))` BEFORE `page.goto()`. Calling `page.evaluate()` before goto on a `file://` page causes `SecurityError: Access is denied for this document`. The `addInitScript` hook runs before the page's own scripts, so the tip IIFE sees `tip-v1 === '1'` and hides the wrap immediately.
+Test 25 uses `browser.newContext({ userAgent: IOS_UA })` (a real iPhone UA string). Multiple sub-tests share one `chromium.launch()` browser but each use a fresh context. **Critical:** pre-seeding localStorage for the "tip hidden after dismiss on reload" sub-test MUST use `page.addInitScript(() => localStorage.setItem('tip-v2', '1'))` BEFORE `page.goto()`. Calling `page.evaluate()` before goto on a `file://` page causes `SecurityError: Access is denied for this document`. The `addInitScript` hook runs before the page's own scripts, so the tip IIFE sees `tip-v2 === '1'` and hides the wrap immediately.
+
+**Dismiss sub-test:** `#tip-dismiss` is inside `#tip-body` which is hidden by default. Click `#tip-toggle` first to open the body, then `waitForFunction` until it's visible, then click `#tip-dismiss`. Clicking a hidden/non-interactable button times out.
+
+### Resolver retry tests (tests 28–29)
+Use a shared counter outside setup/fn. Mock the other two resolvers as always-fail (`E`). Return `E` on call 1, success on call 2. `Promise.any` fires twice (once per `onMapsLink` attempt) so the counter accumulates across both attempts. Use `timeout: 30000` on `waitForSelector('.card')` — two full resolver rounds take longer than the default 15 s.
+
+### splitPlace ZIP test (test 30)
+Assert `#q.toUpperCase() === 'MAZZAT'` (splitPlace takes the name before the first comma, so no street/ZIP/borough in the field). Assert `#loc.toUpperCase().includes('BROOKLYN')`. Assert `!qVal.includes('11231')`.
+
+### Multi-result count test (test 31)
+Use `await p.$$('.card')` to get the NodeList; assert `.length === 2`. Assert `status.includes('2 match')` (covers both "2 matches" and "2 match").
+
+### Bare ?q= deep-link test (test 32)
+Pass `pageUrl = BASE + '?q=MAZZAT'` (no `&loc=`). After load, assert `#loc` value is `''` (empty string, not undefined).
 
 ## Step 4 — Iterate
 
