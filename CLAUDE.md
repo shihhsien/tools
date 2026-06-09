@@ -117,7 +117,9 @@ server-side. Three resolvers race via `Promise.any` with a 6 s timeout:
    real browser User-Agent to pass Google's bot detection.
 
 2. `viaMicrolink` → `api.microlink.io/?url=URL`
-   Headless Chromium service. Returns `{ data: { url, title } }`.
+   Headless Chromium service. Returns `{ data: { url, title } }`. Borough is mined
+   via `boroFromAddr(data.url)`, falling back to `boroFromAddr(data.title)` (v1.16.1)
+   when the resolved URL doesn't carry an address but the page title does.
 
 3. `viaJina` → `r.jina.ai/URL`
    Headless browser. Returns plain text with `URL Source:` and `Title:` lines.
@@ -209,11 +211,12 @@ itself is the richest free, client-side source, not the resolver metadata:**
 
 4. **microlink & Jina add little address value for Maps targets.** Google's Maps page
    is JS-hydrated and bot-blocked, so there's no clean address meta/JSON-LD to scrape.
-   `viaMicrolink` only runs `boroFromAddr(data.url)` today — it could also try
-   `boroFromAddr(data.title)` (free, the title sometimes carries the address), but
-   street-level data from these services is unreliable. microlink *does* support free
-   CSS-selector DOM scraping via `&data.X.selector=…&data.X.attr=textContent` GET params
-   (50/day, no key), but selectors against Google's obfuscated Maps DOM are brittle.
+   `viaMicrolink` runs `boroFromAddr(data.url)`, falling back to `boroFromAddr(data.title)`
+   (v1.16.1) when the URL alone doesn't yield a borough — the title sometimes carries the
+   address even when the URL doesn't. Street-level data from these services is still
+   unreliable. microlink *does* support free CSS-selector DOM scraping via
+   `&data.X.selector=…&data.X.attr=textContent` GET params (50/day, no key), but selectors
+   against Google's obfuscated Maps DOM are brittle.
 
 **Recommended tiered design if this is ever built** (deferred — not implemented):
 parse the place path for street/borough/ZIP → else regex `@lat,lng` and call Nominatim
@@ -513,7 +516,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (38 cases, 133 assertions — all must pass):**
+**Required test cases (39 cases, 136 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -558,6 +561,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 37 | Closure banner shown when currently closed | `.closure-banner` present; text mentions "Closed by DOHMH" |
 | 37b | Closure banner cleared after a later re-open action | no `.closure-banner` when a re-opened action follows the closure |
 | 38 | Card meta line (cuisine, phone, map link) + `role="status"` | `.meta` text includes cuisine; `.meta a[href^="tel:"]` text is formatted phone; `.meta a[href*="maps.google.com"]` href includes lat/lng; `#status` has `role="status"` |
+| 39 | viaMicrolink falls back to title for borough when URL has none | mock microlink `data.url` with no borough + `data.title` containing "Brooklyn, NY"; `#loc === 'BROOKLYN'`; card shown with name MAZZAT |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -582,6 +586,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the history tests (36/36b): `historyHtml` renders only when `history.length >= 2`. Test 36 uses three rows with distinct `inspection_date`s (assert 3 `.hist-row`); test 36b uses a single inspection (assert no `.hist-wrap`).
 - For the closure tests (37/37b): closure is detected by `action.includes('Closed by DOHMH')` and cleared only if a later row's `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37 has a lone closure row (assert `.closure-banner` present); test 37b adds a later re-opened row (assert `.closure-banner` absent).
 - For the card meta test (test 38, v1.16.0): mock a row with `cuisine_description:'Japanese'`, `phone:'2125551234'`, `latitude:'40.7580'`, `longitude:'-73.9855'`. Assert `.meta` textContent includes `Japanese`; `.meta a[href^="tel:"]` textContent === `(212) 555-1234` (via `fmtPhone`); `.meta a[href*="maps.google.com"]` href includes `40.7580,-73.9855`; and `#status` `getAttribute('role') === 'status'`.
+- For the microlink title-borough-fallback test (test 39, v1.16.1): trigger a `maps.app.goo.gl` short link via `triggerMaps`. Mock `mapu.retiolus.net` and `jina.ai` as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z', title: 'Mazzat - Brooklyn, NY - Google Maps' } }` — note the `data.url` has no borough (no comma-separated address segment), but `data.title` has "Brooklyn, NY". Mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fallback fired since `boroFromAddr(data.url)` finds nothing) and `.name === 'MAZZAT'`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -666,7 +671,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.16.0**
+Current: **v1.16.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -695,6 +700,7 @@ Notable versions:
 - v1.14.7 — updated iOS Shortcut install link to 4-action version (Text conversion + URL Encode workaround for Shortcuts URL-type encoding bug)
 - v1.15.0 — violation list with critical/not-critical chips and violation code; score bar with A/B/C threshold markers and contextual notes; inspection history timeline (last 6 inspections); closure banner when restaurant is currently closed by DOHMH; tests 33–37b added (37 cases, 129 assertions)
 - v1.16.0 — `$select` widened to fetch `phone`, `cuisine_description`, `nta`, `latitude`, `longitude`; cards show a `.meta` line with cuisine, formatted `tel:` phone link, and "Map ↗" link; `--C` darkened `#e07d2a`→`#c96f20` (3.63:1, clears 3:1 for the C grade chip/placard); `.grade-hist.B`/`.grade-hist.C` use dedicated darker backgrounds (`#21703e`/`#a05819`, both ≥4.5:1) for the small history chips; `#status` gets `role="status"`; test 38 added (38 cases, 133 assertions)
+- v1.16.1 — `viaMicrolink` now falls back to `boroFromAddr(data.title)` when `boroFromAddr(data.url)` finds nothing, improving borough extraction for short-link resolutions where the title carries the address but the resolved URL doesn't
 
 ## Known-good Maps parsing baseline
 

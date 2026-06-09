@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 38 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 39 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 38-case Playwright test suite, fix any failures, and confirm 133/133 assertions pass.
+Run the full 39-case Playwright test suite, fix any failures, and confirm 136/136 assertions pass.
 
 ## Setup
 
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 38 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 39 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `133 tests: 133 passed, 0 failed`
+Expected output ends with: `136 tests: 136 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -213,6 +213,14 @@ Plain DOHMH search like tests 33–37b. Mock one row with `cuisine_description:'
 - `.meta a[href^="tel:"]` exists and its `textContent === '(212) 555-1234'` (formatted by `fmtPhone`)
 - `.meta a[href*="maps.google.com"]` exists and its `href` includes `40.7580,-73.9855`
 - `#status` element's `getAttribute('role') === 'status'`
+
+### viaMicrolink title-borough fallback (test 39, v1.16.1)
+Trigger a `maps.app.goo.gl` short link via `triggerMaps`. Mock `mapu.retiolus.net` and `jina.ai`
+as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z', title: 'Mazzat - Brooklyn, NY - Google Maps' } }` —
+`data.url` has no borough (no comma-separated address segment), but `data.title` does. Mock
+`43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert:
+- `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fired since `boroFromAddr(data.url)` found nothing)
+- `.name === 'MAZZAT'`
 
 ## Step 4 — Iterate
 

@@ -58,11 +58,11 @@ git push origin main
 Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`):
 
 ```bash
-# Write + run the 38-case suite (see CLAUDE.md §Testing for the full harness)
+# Write + run the 39-case suite (see CLAUDE.md §Testing for the full harness)
 node test.mjs
 ```
 
-38 cases, 133 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=` and `?maps=` — encoded and unencoded), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner), and the v1.16.0 card meta line (cuisine, phone, map link) + `role="status"`.
+39 cases, 136 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=` and `?maps=` — encoded and unencoded), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner), the v1.16.0 card meta line (cuisine, phone, map link) + `role="status"`, and the v1.16.1 microlink title-borough fallback.
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
 

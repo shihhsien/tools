@@ -157,7 +157,7 @@
 <div id="status" class="status" role="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.16.0</div>
+<div class="ver">v1.16.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -492,7 +492,7 @@ async function viaMicrolink(url) {
   const name = data && (nameFromUrl(data.url) || cleanTitle(data.title));
   if (!name) { dbg('viaMicrolink: ✗ no name'); throw 0; }
   dbg(`viaMicrolink: ✓ name="${name}"`);
-  return { name, boro: boroFromAddr(data.url) };
+  return { name, boro: boroFromAddr(data.url) || boroFromAddr(data.title) };
 }
 
 async function viaJina(url) {
