@@ -94,6 +94,13 @@ deduplicated by `camis` (restaurant ID). Two things are tracked per restaurant:
 
 These are separate because an inspection can happen without issuing a new grade.
 
+`buildUrl`'s `$select` also fetches `phone`, `cuisine_description`, `nta`, `latitude`,
+`longitude` (v1.16.0) — present on `43nn-pn8j` but previously unused. `cardHtml` renders
+these (when non-empty) in a `.meta` line under the address: cuisine type as plain text,
+phone as a `tel:` link formatted via `fmtPhone()` (`(212) 555-1234`), and a "Map ↗" link
+to `maps.google.com/?q=LAT,LNG` when coordinates are present. `nta` (neighborhood) is
+fetched but not yet displayed — reserved for a future enrichment.
+
 ### Maps link resolution
 
 When the user pastes a Google Maps link, the app tries to extract the
@@ -290,7 +297,7 @@ The `<script>` is organised into labelled sections:
 | Section | Key functions |
 |---|---|
 | Config & DOM | constants, cached element refs |
-| Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate` |
+| Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone` |
 | NYC DOHMH API | `buildUrl`, `getJSON` (with corsproxy.io fallback) |
 | Rendering | `groupByRestaurant`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
 | Search | `search` |
@@ -308,7 +315,7 @@ traffic-light scheme. No red anywhere — even a C is a calm orange.
 |---|---|---|---|---|
 | A | `--A` | `#1f57a6` blue | 0–13 | was `#16a34a` green |
 | B | `--B` | `#2f8b4e` green | 14–27 | was `#ca8a04` amber |
-| C | `--C` | `#e07d2a` orange | 28+ | was `#dc2626` red |
+| C | `--C` | `#c96f20` orange | 28+ | was `#dc2626` red |
 
 `placardHtml(grade)` renders the iconic white DOHMH window card (header
 "Sanitary Inspection / Grade", giant letter in the grade ink color, footer
@@ -319,6 +326,23 @@ renders a "Grade Pending" placard in near-black `#1a1a1a` with a thin border.
 
 The `.pending` status color is `var(--muted)` (grey), **not** `var(--B)` — amber
 no longer signals "pending" now that it means a genuine B grade.
+
+### Contrast fixes (v1.16.0)
+
+White text on the original `--C` (`#e07d2a`) was 2.94:1 — failing even the 3:1
+large-text floor for the `.grade.C` chip and the C placard letter. `--C` was
+darkened to `#c96f20` (3.63:1 with white), which clears 3:1 for those large-text
+uses. `.viol-crit`'s tinted background was updated to match (`rgba(201,111,32,.15)`).
+
+The small `.grade-hist` history chips (22px, 11px bold — not "large text," needs
+4.5:1) are a separate problem: the *original* B green was 4.26:1 and C orange was
+2.94:1, both failing 4.5:1, and `--C: #c96f20` alone wouldn't fix the C chip either
+(3.63:1). So `.grade-hist.B` and `.grade-hist.C` use **dedicated darker
+backgrounds** (`#21703e` → 6.08:1, `#a05819` → 5.38:1) instead of `var(--B)`/`var(--C)`
+— do not collapse these back to the shared variables.
+
+`#status` now has `role="status"` so screen readers announce search results and
+errors automatically.
 
 ---
 
@@ -489,7 +513,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (37 cases, 129 assertions — all must pass):**
+**Required test cases (38 cases, 133 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -533,6 +557,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 36b | History hidden for a single inspection | no `.hist-wrap` when only one inspection date |
 | 37 | Closure banner shown when currently closed | `.closure-banner` present; text mentions "Closed by DOHMH" |
 | 37b | Closure banner cleared after a later re-open action | no `.closure-banner` when a re-opened action follows the closure |
+| 38 | Card meta line (cuisine, phone, map link) + `role="status"` | `.meta` text includes cuisine; `.meta a[href^="tel:"]` text is formatted phone; `.meta a[href*="maps.google.com"]` href includes lat/lng; `#status` has `role="status"` |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -556,6 +581,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the clean test (test 35): single row with `violation_description:null` → `groupByRestaurant` produces an empty `violations` array → `violationsHtml` returns the `.no-viols` checkmark row, no `.viols` `<details>`.
 - For the history tests (36/36b): `historyHtml` renders only when `history.length >= 2`. Test 36 uses three rows with distinct `inspection_date`s (assert 3 `.hist-row`); test 36b uses a single inspection (assert no `.hist-wrap`).
 - For the closure tests (37/37b): closure is detected by `action.includes('Closed by DOHMH')` and cleared only if a later row's `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37 has a lone closure row (assert `.closure-banner` present); test 37b adds a later re-opened row (assert `.closure-banner` absent).
+- For the card meta test (test 38, v1.16.0): mock a row with `cuisine_description:'Japanese'`, `phone:'2125551234'`, `latitude:'40.7580'`, `longitude:'-73.9855'`. Assert `.meta` textContent includes `Japanese`; `.meta a[href^="tel:"]` textContent === `(212) 555-1234` (via `fmtPhone`); `.meta a[href*="maps.google.com"]` href includes `40.7580,-73.9855`; and `#status` `getAttribute('role') === 'status'`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -640,7 +666,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.15.0**
+Current: **v1.16.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -668,6 +694,7 @@ Notable versions:
 - v1.14.6 — raw-string parsing for `?maps=` deep link (`location.search.startsWith` + `.slice(6)`) so Shortcuts can pass an unencoded Maps URL without a URL Encode action
 - v1.14.7 — updated iOS Shortcut install link to 4-action version (Text conversion + URL Encode workaround for Shortcuts URL-type encoding bug)
 - v1.15.0 — violation list with critical/not-critical chips and violation code; score bar with A/B/C threshold markers and contextual notes; inspection history timeline (last 6 inspections); closure banner when restaurant is currently closed by DOHMH; tests 33–37b added (37 cases, 129 assertions)
+- v1.16.0 — `$select` widened to fetch `phone`, `cuisine_description`, `nta`, `latitude`, `longitude`; cards show a `.meta` line with cuisine, formatted `tel:` phone link, and "Map ↗" link; `--C` darkened `#e07d2a`→`#c96f20` (3.63:1, clears 3:1 for the C grade chip/placard); `.grade-hist.B`/`.grade-hist.C` use dedicated darker backgrounds (`#21703e`/`#a05819`, both ≥4.5:1) for the small history chips; `#status` gets `role="status"`; test 38 added (38 cases, 133 assertions)
 
 ## Known-good Maps parsing baseline
 

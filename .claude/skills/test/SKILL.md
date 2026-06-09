@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 37 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 38 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 37-case Playwright test suite, fix any failures, and confirm 129/129 assertions pass.
+Run the full 38-case Playwright test suite, fix any failures, and confirm 133/133 assertions pass.
 
 ## Setup
 
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 37 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 38 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `129 tests: 129 passed, 0 failed`
+Expected output ends with: `133 tests: 133 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -205,6 +205,14 @@ These are plain DOHMH searches (`page.fill('#q', NAME)` + `page.click('#go')` + 
 - **Test 35 (clean):** one row with `violation_description:null`. Assert `.no-viols` present and `.viols` absent.
 - **Tests 36/36b (history):** `historyHtml` renders only when `history.length >= 2`. Test 36: three rows with distinct `inspection_date`s → assert `.hist-wrap` present and 3 `.hist-row`. Test 36b: single inspection → assert `.hist-wrap` absent.
 - **Tests 37/37b (closure):** closure = `action.includes('Closed by DOHMH')`, cleared only by a later row whose `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37: lone closure row → assert `.closure-banner` present and its text matches `/Closed by DOHMH/`. Test 37b: closure row + later re-opened row → assert `.closure-banner` absent.
+
+### Card meta line + role=status (test 38, v1.16.0)
+Plain DOHMH search like tests 33–37b. Mock one row with `cuisine_description:'Japanese'`,
+`phone:'2125551234'`, `latitude:'40.7580'`, `longitude:'-73.9855'`. Assert:
+- `.meta` element exists and its `textContent` includes `Japanese`
+- `.meta a[href^="tel:"]` exists and its `textContent === '(212) 555-1234'` (formatted by `fmtPhone`)
+- `.meta a[href*="maps.google.com"]` exists and its `href` includes `40.7580,-73.9855`
+- `#status` element's `getAttribute('role') === 'status'`
 
 ## Step 4 — Iterate
 

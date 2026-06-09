@@ -23,7 +23,7 @@
     --gray: #52525b;
     --A:    #1f57a6; /* blue   — was #16a34a (traffic-light green) */
     --B:    #2f8b4e; /* green  — was #ca8a04 (traffic-light amber) */
-    --C:    #e07d2a; /* orange — was #dc2626 (traffic-light red)   */
+    --C:    #c96f20; /* orange — was #e07d2a (2.94:1 on white, fails 3:1 large-text floor) */
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { background: var(--bg); overflow-x: hidden; }
@@ -51,6 +51,8 @@
   .grade.A{background:var(--A)} .grade.B{background:var(--B)} .grade.C{background:var(--C)} .grade.other{background:var(--gray);font-size:15px}
   .name { font-weight: 600; font-size: 16px; }
   .addr { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .meta a { color: var(--muted); text-decoration: underline; }
   .detail { font-size: 13px; margin-top: 10px; line-height: 1.45; }
   .detail b { font-weight: 600; }
   .viol { font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -112,7 +114,7 @@
   .viols-body, .hist-body { margin-top: 6px; }
   .viol-item { padding: 6px 0; border-top: 1px solid var(--line); }
   .viol-flag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-bottom: 3px; }
-  .viol-crit { background: rgba(224,125,42,.15); color: var(--C); }
+  .viol-crit { background: rgba(201,111,32,.15); color: var(--C); }
   .viol-ncrit { background: var(--line); color: var(--muted); }
   .viol-code { font-size: 10px; color: var(--gray); font-family: ui-monospace,monospace; margin-left: 4px; }
   .viol-desc { font-size: 12px; color: var(--text); line-height: 1.45; }
@@ -120,7 +122,8 @@
   .hist-row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; border-top: 1px solid var(--line); }
   .hist-date { color: var(--muted); flex: 0 0 90px; }
   .grade-hist { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; font-weight: 700; font-size: 11px; color: #fff; flex-shrink: 0; }
-  .grade-hist.A { background: var(--A); } .grade-hist.B { background: var(--B); } .grade-hist.C { background: var(--C); } .grade-hist.other { background: var(--gray); }
+  .grade-hist.A { background: var(--A); } .grade-hist.B { background: #21703e; } .grade-hist.C { background: #a05819; } .grade-hist.other { background: var(--gray); }
+  /* B/C history chips use darker shades than --B/--C: small white text needs 4.5:1, large chips only need 3:1 */
   .hist-pts { color: var(--muted); flex: 0 0 auto; }
   .hist-type { color: var(--muted); font-size: 11px; flex: 1; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hist-closed { font-size: 11px; font-weight: 600; color: #f87171; }
@@ -151,10 +154,10 @@
 </div>
 
 <button id="go">Look up grade</button>
-<div id="status" class="status"></div>
+<div id="status" class="status" role="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.15.0</div>
+<div class="ver">v1.16.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -191,6 +194,13 @@ function fmtDate(d) {
   catch { return d; }
 }
 
+// 10-digit US numbers from DOHMH -> "(212) 555-1234"; anything else passed through.
+function fmtPhone(p) {
+  const digits = String(p || '').replace(/\D/g, '');
+  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return digits;
+}
+
 // ---- NYC DOHMH API ----------------------------------------------------
 function buildUrl(name, loc) {
   let where = `upper(dba) like '%${name}%'`;
@@ -199,7 +209,7 @@ function buildUrl(name, loc) {
     where += ` and (upper(street) like '%${L}%' or upper(boro) like '%${L}%' or zipcode='${loc}')`;
   }
   const params = new URLSearchParams({
-    $select: 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,violation_code,critical_flag,action',
+    $select: 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,violation_code,critical_flag,action,phone,cuisine_description,nta,latitude,longitude',
     $where: where,
     $order: 'inspection_date DESC',
     $limit: '200',
@@ -317,10 +327,15 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     ? 'Grade <b>' + htmlEsc(graded.grade) + '</b> \xb7 score ' + htmlEsc(graded.score ?? '—') + ' \xb7 graded ' + fmtDate(graded.grade_date)
     : '<span class="pending">No letter grade on record yet</span> (latest score ' + htmlEsc(latest.score ?? '—') + ')';
   const scoreBar = scoreBarHtml(graded ? graded.score : latest.score, grade);
+  const metaParts = [];
+  if (info.cuisine_description) metaParts.push(htmlEsc(info.cuisine_description));
+  if (info.phone) metaParts.push('<a href="tel:+1' + htmlEsc(String(info.phone).replace(/\D/g, '')) + '">' + htmlEsc(fmtPhone(info.phone)) + '</a>');
+  if (info.latitude && info.longitude) metaParts.push('<a href="https://maps.google.com/?q=' + htmlEsc(info.latitude) + ',' + htmlEsc(info.longitude) + '" target="_blank" rel="noopener">Map ↗</a>');
+  const meta = metaParts.length ? '<div class="meta">' + metaParts.join(' \xb7 ') + '</div>' : '';
   return '<div class="card">'
     + closureBannerHtml(latestClosure, currentlyClosed)
     + '<div class="top"><div class="grade ' + gradeClass(grade) + '">' + htmlEsc(grade || '?') + '</div>'
-    + '<div><div class="name">' + htmlEsc(info.dba || 'Unknown') + '</div><div class="addr">' + addr + '</div></div></div>'
+    + '<div><div class="name">' + htmlEsc(info.dba || 'Unknown') + '</div><div class="addr">' + addr + '</div>' + meta + '</div></div>'
     + '<div class="detail">' + gradeLine + '</div>'
     + scoreBar
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
