@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (23 cases, 70 assertions)
+- `.claude/skills/test/` — Playwright test skill (23 cases, 73 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -358,7 +358,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (23 cases, 70 assertions — all must pass):**
+**Required test cases (23 cases, 73 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -395,6 +395,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For deep-link tests (test 17): pass `pageUrl = BASE + '?q=Name&loc=Borough'` to the test runner
 - For progressive fallback (test 20): check `u.includes('SUSHI')` (not `decodeURIComponent(u).includes('OITA SUSHI')`) — URLSearchParams encodes spaces as `+`, so the decoded URL still has `+` after `decodeURIComponent`. Shared counter variables must be declared outside both `setup` and `fn` closures (they run in separate scopes within `T()`).
 - For the Firebase junk-title test (test 23): mock `microlink.io` to return `{ data: { url: '…?q=40.6,-73.9', title: 'Dynamic Link Not Found' } }`, `mapu` to coordinates only, `jina` to empty. Assert DOHMH (`43nn-pn8j`) is never called and `#q` stays `''`.
+- For tests 6, 7, 21, 22 (apostrophe/prime URL escaping): `URLSearchParams` encodes `'` as `%27`, so `capturedUrl.includes("MIA''S")` fails — use `decodeURIComponent(capturedUrl).includes("MIA''S")`. Unlike spaces (encoded as `+`, not decoded by `decodeURIComponent`), apostrophes ARE decoded by it.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -479,7 +480,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.1**
+Current: **v1.14.2**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -500,6 +501,7 @@ Notable versions:
 - v1.13.1 — `cleanTitle` rejects Firebase error-page titles (`JUNK_TITLE`), fixing dead `maps.app.goo.gl` links that scraped "Dynamic Link Not Found" as a name
 - v1.14.0 — PWA assets: favicon (SVG + PNG set), apple-touch-icon, web app manifest; button transition + disabled state; input outline removed
 - v1.14.1 — `user-select: none` on grade chip; README: git hook setup + test count fix (22→23, 61→70)
+- v1.14.2 — remove `maximum-scale=1.0` (accessibility); `html` background fills wide screens; `htmlEsc()` applied to all API data in `cardHtml` and error messages; `onMapsLink` error uses DOM instead of innerHTML for user URL; placard `inkMap` uses CSS vars (`var(--A/B/C)`) instead of duplicated hex; design skill brief corrected to DOHMH palette
 
 ## Known-good Maps parsing baseline
 

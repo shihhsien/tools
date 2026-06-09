@@ -5,7 +5,7 @@ description: Run the full Playwright test suite for nyc-restaurant-grade.html. W
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 23-case Playwright test suite, fix any failures, and confirm 70/70 assertions pass.
+Run the full 23-case Playwright test suite, fix any failures, and confirm 73/73 assertions pass.
 
 ## Setup
 
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `70 tests: 70 passed, 0 failed`
+Expected output ends with: `73 tests: 73 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -165,8 +165,11 @@ URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `
 ### Unicode normalization tests (tests 7, 21)
 `normalize()` in `search()` handles three codepoints: U+2018, U+2019, U+2032. Write these directly in Python heredocs — never via the Edit or Write tool, which will corrupt them. Test 7 needs intentional U+2019 in the input; test 21 needs intentional U+2032. Both verify the captured DOHMH URL contains `MIA''S`.
 
+### Apostrophe URL-encoding (tests 6, 7, 21, 22)
+`URLSearchParams` encodes `'` (U+0027) as `%27`, so `capturedUrl.includes("MIA''S")` always fails. Use `decodeURIComponent(capturedUrl).includes("MIA''S")` instead. Unlike spaces (encoded as `+`, which `decodeURIComponent` does NOT decode), apostrophes ARE recovered by `decodeURIComponent`.
+
 ### loc escaping test (test 22)
-`loc` goes through `normalize(...).replace(/'/g, "''")`. Test 22 fills `#loc` with `O'NEIL ST` and checks the captured URL contains `O''NEIL`. Use `decoded.includes("O''NEIL")` — same `decodeURIComponent` caveat about `+` applies.
+`loc` goes through `normalize(...).replace(/'/g, "''")`. Test 22 fills `#loc` with `O'NEIL ST` and checks the captured URL contains `O''NEIL`. Use `decodeURIComponent(capturedUrl).includes("O''NEIL")` — same apostrophe encoding as above.
 
 ### Placard tests (tests 4, 5, 5b)
 `placardHtml()` renders `.placard-wrap` only when `render()` gets exactly one group. Test 4 asserts `.placard-wrap` present on a single result; test 5 asserts absent on zero results; test 5b asserts absent when two cards render. Fixture `MAZZAT2` (a second distinct restaurant) drives the multi-result case.

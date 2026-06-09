@@ -62,7 +62,7 @@ Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`
 node test.mjs
 ```
 
-23 cases, 70 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry, deep links, borough extraction, progressive word-drop fallback, and Firebase junk-title rejection.
+23 cases, 73 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry, deep links, borough extraction, progressive word-drop fallback, and Firebase junk-title rejection.
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
 

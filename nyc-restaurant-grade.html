@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="NYC Grade">
 <title>NYC Grade</title>
@@ -26,8 +26,8 @@
     --C:    #e07d2a; /* orange — was #dc2626 (traffic-light red)   */
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { overflow-x: hidden; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 60px; max-width: 600px; }
+  html { background: var(--bg); overflow-x: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0 auto; padding: 16px; padding-bottom: 60px; max-width: 600px; overflow-x: hidden; }
   a { color: #60a5fa; }
   h1 { font-size: 20px; margin: 4px 0 2px; }
   .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
@@ -102,7 +102,7 @@
 <div id="status" class="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.14.1</div>
+<div class="ver">v1.14.2</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -125,6 +125,7 @@ const decode = s => { try { return decodeURIComponent(s); } catch { return s; } 
 const setStatus = text => { statusEl.className = 'status'; statusEl.textContent = text; };
 const setError  = html => { statusEl.className = 'status err'; statusEl.innerHTML = html; };
 const gradeClass = g => (['A', 'B', 'C'].includes(g) ? g : 'other');
+const htmlEsc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const dbg = DEBUG ? msg => {
   const el = document.createElement('div');
   el.textContent = `${new Date().toISOString().slice(11,19)} ${msg}`;
@@ -182,22 +183,21 @@ function groupByRestaurant(rows) {
 
 function cardHtml({ info, graded, latest }) {
   const grade = graded ? graded.grade : null;
-  const addr = `${info.building || ''} ${info.street || ''}, ${info.boro || ''} ${info.zipcode || ''}`
-    .replace(/\s+/g, ' ').trim();
+  const addr = htmlEsc(`${info.building || ''} ${info.street || ''}, ${info.boro || ''} ${info.zipcode || ''}`.replace(/\s+/g, ' ').trim());
   const gradeLine = graded
-    ? `Grade <b>${graded.grade}</b> · score ${graded.score ?? '—'} · graded ${fmtDate(graded.grade_date)}`
-    : `<span class="pending">No letter grade on record yet</span> (latest score ${latest.score ?? '—'})`;
+    ? `Grade <b>${htmlEsc(graded.grade)}</b> · score ${htmlEsc(graded.score ?? '—')} · graded ${fmtDate(graded.grade_date)}`
+    : `<span class="pending">No letter grade on record yet</span> (latest score ${htmlEsc(latest.score ?? '—')})`;
   const viol = latest.violation_description
-    ? `<div class="viol">Latest cited (${latest.critical_flag || ''}): ${latest.violation_description}</div>`
+    ? `<div class="viol">Latest cited (${htmlEsc(latest.critical_flag || '')}): ${htmlEsc(latest.violation_description)}</div>`
     : '';
   return `
     <div class="card">
       <div class="top">
-        <div class="grade ${gradeClass(grade)}">${grade || '?'}</div>
-        <div><div class="name">${info.dba || 'Unknown'}</div><div class="addr">${addr}</div></div>
+        <div class="grade ${gradeClass(grade)}">${htmlEsc(grade || '?')}</div>
+        <div><div class="name">${htmlEsc(info.dba || 'Unknown')}</div><div class="addr">${addr}</div></div>
       </div>
       <div class="detail">${gradeLine}</div>
-      <div class="detail muted">Last inspection: ${fmtDate(latest.inspection_date)} · ${latest.inspection_type || ''}</div>
+      <div class="detail muted">Last inspection: ${fmtDate(latest.inspection_date)} · ${htmlEsc(latest.inspection_type || '')}</div>
       ${viol}
     </div>`;
 }
@@ -207,7 +207,7 @@ function placardHtml(grade) {
   const g = (grade || '').toUpperCase();
   const known = ['A', 'B', 'C'].includes(g);
   const pending = !known;
-  const inkMap = { A: '#1f57a6', B: '#2f8b4e', C: '#e07d2a' };
+  const inkMap = { A: 'var(--A)', B: 'var(--B)', C: 'var(--C)' };
   const ink = pending ? '#1a1a1a' : inkMap[g];
   const borderPx = pending ? '1px' : '2px';
   const letterOrPending = pending
@@ -268,7 +268,7 @@ async function search() {
       }
     }
   } catch (e) {
-    setError(`Couldn't load (${e.message}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
+    setError(`Couldn't load (${htmlEsc(e.message)}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
   } finally {
     btn.disabled = false;
   }
@@ -403,8 +403,11 @@ async function onMapsLink() {
       if (attempt < 2) continue;
       btn.disabled = false;
       if (e.message !== 'app-link') return setError('Could not resolve link.');
-      const safeUrl = url.replace(/"/g, '&quot;');
-      setError(`Couldn't find a restaurant name in this link. <a href="${safeUrl}" target="_blank" rel="noopener">Open it ↗</a> — once the map loads, copy the full URL from the address bar and paste it here, or type the name above.`);
+      statusEl.className = 'status err';
+      statusEl.textContent = '';
+      const _link = document.createElement('a');
+      _link.href = url; _link.target = '_blank'; _link.rel = 'noopener'; _link.textContent = 'Open it ↗';
+      statusEl.append("Couldn't find a restaurant name in this link. ", _link, ' — once the map loads, copy the full URL from the address bar and paste it here, or type the name above.');
     }
   }
 }
