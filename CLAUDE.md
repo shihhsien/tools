@@ -167,9 +167,12 @@ Used by the iOS Shortcut recipe to bypass the short-link problem entirely.
 
 `?maps=URL` passes a raw Google Maps URL (full or short link) directly to the
 resolver pipeline on load. Used by the 2-action iOS Shortcut: **Receive URLs
-from Share Sheet → Open URLs** with `?maps=` + Shortcut Input. The app runs
-`onMapsLink()` on the value, following the same resolver path (mapu → microlink
-→ jina, with auto-retry) as manual paste.
+from Share Sheet → Open URLs** with `?maps=` + Shortcut Input. The app parses
+the value from `location.search` directly using `location.search.startsWith('?maps=')` +
+`.slice(6)` (not `URLSearchParams.get('maps')`), so the Maps URL is read verbatim
+without re-encoding — Shortcuts can pass an unencoded Maps URL without a URL
+Encode action. The app then runs `onMapsLink()` on the value, following the same
+resolver path (mapu → microlink → jina, with auto-retry) as manual paste.
 
 ---
 
@@ -492,7 +495,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.5**
+Current: **v1.14.6**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -517,6 +520,7 @@ Notable versions:
 - v1.14.3 — iOS Shortcut tip: collapsible inline instructions shown only on iOS, dismissed via localStorage (`tip-v1`); test 25 added (9 assertions)
 - v1.14.4 — `?maps=URL` deep-link support; iOS tip updated to 2-action shortcut; dismiss key bumped to tip-v2; test 26 added
 - v1.14.5 — `?maps=URL` deep-link support: raw Maps URL passed as query param triggers resolver pipeline on load; iOS tip updated to 2-action shortcut (`?maps=` URL, no typing); dismiss key bumped to `tip-v2`; test 26 added
+- v1.14.6 — raw-string parsing for `?maps=` deep link (`location.search.startsWith` + `.slice(6)`) so Shortcuts can pass an unencoded Maps URL without a URL Encode action
 
 ## Known-good Maps parsing baseline
 
