@@ -495,7 +495,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.14.6**
+Current: **v1.14.7**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -521,6 +521,7 @@ Notable versions:
 - v1.14.4 — `?maps=URL` deep-link support; iOS tip updated to 2-action shortcut; dismiss key bumped to tip-v2; test 26 added
 - v1.14.5 — `?maps=URL` deep-link support: raw Maps URL passed as query param triggers resolver pipeline on load; iOS tip updated to 2-action shortcut (`?maps=` URL, no typing); dismiss key bumped to `tip-v2`; test 26 added
 - v1.14.6 — raw-string parsing for `?maps=` deep link (`location.search.startsWith` + `.slice(6)`) so Shortcuts can pass an unencoded Maps URL without a URL Encode action
+- v1.14.7 — updated iOS Shortcut install link to 4-action version (Text conversion + URL Encode workaround for Shortcuts URL-type encoding bug)
 
 ## Known-good Maps parsing baseline
 
