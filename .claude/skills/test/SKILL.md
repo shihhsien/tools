@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 42 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 45 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 42-case Playwright test suite, fix any failures, and confirm 145/145 assertions pass.
+Run the full 45-case Playwright test suite, fix any failures, and confirm 161/161 assertions pass.
 
 ## Setup
 
@@ -36,6 +36,10 @@ const MAZZAT = mkRow({ camis:'2', dba:'MAZZAT', boro:'Brooklyn', zipcode:'11231'
 const MAZZAT2 = mkRow({ camis:'9', dba:'MAZZAT UPTOWN', boro:'Manhattan', zipcode:'10001', score:'5',
   grade_date:'2025-05-07T00:00:00.000', inspection_date:'2025-05-07T00:00:00.000' });
 const MIAS = mkRow({ camis:'3', dba:"MIA'S BROOKLYN BAKERY", boro:'Brooklyn', zipcode:'11201' });
+
+const IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const SQ = String.fromCharCode(0x2019);    // ' right single quotation mark (iOS smart quote)
+const PRIME = String.fromCharCode(0x2032); // ′ prime — both built via fromCharCode so Write/Edit can't corrupt them
 
 // Harness
 let pass = 0, fail = 0;
@@ -97,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 42 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 45 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `145 tests: 145 passed, 0 failed`
+Expected output ends with: `161 tests: 161 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -163,7 +167,7 @@ Check that `displayName` (straight quotes) and `name` (SoQL-escaped with `''`) a
 URLSearchParams encodes spaces as `+`. `decodeURIComponent(u)` does NOT decode `+` as space, so `decoded.includes('OITA SUSHI')` fails. Use `u.includes('SUSHI')` to detect the two-word query instead.
 
 ### Unicode normalization tests (tests 7, 21)
-`normalize()` in `search()` handles three codepoints: U+2018, U+2019, U+2032. Write these directly in Python heredocs — never via the Edit or Write tool, which will corrupt them. Test 7 needs intentional U+2019 in the input; test 21 needs intentional U+2032. Both verify the captured DOHMH URL contains `MIA''S`.
+`normalize()` in `search()` handles three codepoints: U+2018, U+2019, U+2032. Build these via `String.fromCharCode` (`SQ`/`PRIME` in the harness) rather than typing the literal characters — the Edit/Write tools can silently turn a literal curly quote into a straight one, defeating the test. Test 7 fills `#q` with `'MIA' + SQ + 'S BROOKLYN BAKERY'` (U+2019); test 21 uses `PRIME` (U+2032). Both verify the captured DOHMH URL contains `MIA''S`.
 
 ### Apostrophe URL-encoding (tests 6, 7, 21, 22)
 `URLSearchParams` encodes `'` (U+0027) as `%27`, so `capturedUrl.includes("MIA''S")` always fails. Use `decodeURIComponent(capturedUrl).includes("MIA''S")` instead. Unlike spaces (encoded as `+`, which `decodeURIComponent` does NOT decode), apostrophes ARE recovered by `decodeURIComponent`.
@@ -244,6 +248,29 @@ Mock `mapu.retiolus.net` to return `J({ full_link: 'https://www.google.com/maps/
 always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Trigger the short link via `triggerMaps`,
 wait for `.card`, then assert `#loc === '11231'` (proves `splitPlace`'s ZIP fallback fired since
 `boroFromAddr` found nothing) and `.name === 'MAZZAT'`.
+
+### About-grades explainer panel (test 43, v1.18.0)
+Static — no search, no mocks (`setupRoute(p, [])`). The `#about` `<details>` is always in the DOM.
+Assert `#about` present, `el.open === false` (collapsed by default), its `textContent` includes
+`0–13` (en dash, not hyphen) and `lower is better`, and mentions both `Grade Pending` and
+`Closed by DOHMH`. This guards the static interpretive copy from accidental deletion.
+
+### Grade-context line (tests 44, 44b, v1.18.0)
+Plain DOHMH search. `cardHtml` renders a `.grade-ctx` line under the grade line: `gradeContextHtml(grade)`
+for a graded row, or the `PENDING_CONTEXT` string when `graded` is null. Test 44: `J([MAZZAT])` (grade A)
+→ assert `.grade-ctx` present and its text includes `9 in 10`. Test 44b: a row with `grade:null,
+grade_date:null` → assert `.grade-ctx` present and its text includes `re-inspected`.
+
+### Violation-category enrichment (tests 45, 45b, v1.18.0)
+`loadViolCodes()` fetches the NYC Health reference CSV from `raw.githubusercontent.com` once (primed
+on load, awaited in `search()`), parsing `Violation_Code`→`Category_Description` into `violCodeMap`;
+`violationsHtml` adds a `.viol-cat` label per violation when the code maps. Test 45: mock
+`raw.githubusercontent.com` → `TX(csv)` where `csv` is a `Violation_Code,Health_Code,Violation_Summary,Category_Description`
+header plus an `04L,...,Vermin / Pests` row; mock `43nn-pn8j` with a row whose `violation_code:'04L'`.
+Wait for `.card`, assert `.viol-cat` present and its text `=== 'Vermin / Pests'`. Test 45b: mock
+`raw.githubusercontent.com` → `E` (fetch fails); assert the `.viol-item` still renders and `.viol-cat`
+is absent (graceful degradation). All other tests leave `raw.githubusercontent.com` unmocked, so
+`setupRoute` aborts it → `loadViolCodes` swallows the error → `{}` → no `.viol-cat` (and no JS error).
 
 ## Step 4 — Iterate
 

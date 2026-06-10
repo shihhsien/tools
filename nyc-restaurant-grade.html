@@ -117,7 +117,10 @@
   .viol-crit { background: rgba(201,111,32,.15); color: var(--C); }
   .viol-ncrit { background: var(--line); color: var(--muted); }
   .viol-code { font-size: 10px; color: var(--gray); font-family: ui-monospace,monospace; margin-left: 4px; }
+  .viol-cat { font-size: 10px; color: var(--muted); margin-left: 6px; }
   .viol-desc { font-size: 12px; color: var(--text); line-height: 1.45; }
+  /* === Grade context (plain-English meaning under the grade line) === */
+  .grade-ctx { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
   /* === History === */
   .hist-row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; border-top: 1px solid var(--line); }
   .hist-date { color: var(--muted); flex: 0 0 90px; }
@@ -129,6 +132,16 @@
   .hist-closed { font-size: 11px; font-weight: 600; color: #f87171; }
   /* === Closure banner === */
   .closure-banner { margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.25); }
+  /* === "How NYC grades work" explainer === */
+  .about { margin-top: 18px; }
+  .about summary { font-size: 13px; color: var(--muted); cursor: pointer; list-style: none; padding: 4px 0; user-select: none; }
+  .about summary::-webkit-details-marker { display: none; }
+  .about summary::before { content: '\25B8  '; }
+  .about[open] summary::before { content: '\25BE  '; }
+  .about-body { font-size: 13px; color: var(--muted); line-height: 1.55; margin-top: 4px; }
+  .about-body p { margin: 8px 0; }
+  .about-body b { color: var(--text); font-weight: 600; }
+  .about-body .src { font-size: 11px; }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
@@ -156,14 +169,33 @@
 <button id="go">Look up grade</button>
 <div id="status" class="status" role="status"></div>
 <div id="results"></div>
+
+<details class="about" id="about">
+  <summary>What do these grades mean?</summary>
+  <div class="about-body">
+    <p>Grades reflect points for health-code violations found at inspection &mdash; <b>lower is better</b>. A&nbsp;=&nbsp;0&ndash;13&nbsp;points, B&nbsp;=&nbsp;14&ndash;27, C&nbsp;=&nbsp;28 or more.</p>
+    <p><b>Critical</b> violations (pests, unsafe food temperatures, bare-hand contact) carry more points than upkeep issues, so one critical finding can move a grade more than several minor ones.</p>
+    <p>About <b>9 in 10</b> NYC restaurants score an A, so a B or C is genuinely worth noting. But an A right at 13 points is borderline &mdash; the <b>score matters as much as the letter</b>.</p>
+    <p><b>&ldquo;Grade Pending&rdquo;</b> usually means a recent below-A inspection awaiting a re-inspection (often within about 30 days) or an open appeal &mdash; not a final grade.</p>
+    <p><b>&ldquo;Closed by DOHMH&rdquo;</b> means a serious hazard (e.g. severe pests, no hot water); the restaurant can&rsquo;t reopen until it&rsquo;s fixed and the city re-approves.</p>
+    <p>Inspections recur on a sliding schedule: roughly once a year for an A, more often (every few months) for a B or C.</p>
+    <p>Letter grading is credited with real food-safety gains &mdash; a CDC study linked it to a measurable drop in <i>Salmonella</i> cases citywide.</p>
+    <p class="src"><a href="https://www.nyc.gov/assets/doh/downloads/pdf/rii/restaurant-grading-faq.pdf" target="_blank" rel="noopener">NYC Health: how restaurants are scored &amp; graded &#8599;</a></p>
+  </div>
+</details>
+
 <div id="debug-log"></div>
-<div class="ver">v1.17.0</div>
+<div class="ver">v1.18.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
 const API = 'https://data.cityofnewyork.us/resource/43nn-pn8j.json';
 const PROXY = 'https://corsproxy.io/?url=';
 const MAPS_HOSTS = /google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i;
+// Official NYC Health violation-code reference (keyless, CORS-open via raw.githubusercontent).
+// Used to label each violation with a plain-English category. Best-effort: if the fetch
+// fails or the columns don't match, violations still render without a category label.
+const VIOL_CSV = 'https://raw.githubusercontent.com/nychealth/Food-Safety-Health-Code-Reference/main/Violation-Health-Code-Mapping.csv';
 
 const nameInput = document.getElementById('q');
 const locInput  = document.getElementById('loc');
@@ -230,6 +262,57 @@ async function getJSON(url) {
   }
 }
 
+// ---- Violation-code categories (best-effort enrichment) ---------------
+// Parse one CSV line, honouring "quoted, commas".
+function splitCsvLine(line) {
+  const out = []; let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') q = false;
+      else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+// Build { CODE -> category } from the reference CSV. Columns are located by name
+// (tolerant to reordering); returns {} if the expected columns aren't present.
+function parseViolCsv(text) {
+  const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/);
+  if (lines.length < 2) return {};
+  const header = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+  const codeIdx = header.findIndex(h => h.includes('code') && h.includes('viol'));
+  const catIdx  = header.findIndex(h => h.includes('category'));
+  if (codeIdx < 0 || catIdx < 0) return {};
+  const map = {};
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    const cols = splitCsvLine(lines[i]);
+    const code = (cols[codeIdx] || '').trim().toUpperCase();
+    const cat  = (cols[catIdx]  || '').trim();
+    if (code && cat) map[code] = cat;
+  }
+  return map;
+}
+
+let violCodeMap = {};          // CODE -> category, populated once the CSV loads
+let violCodePromise = null;    // de-dupes concurrent loads
+function loadViolCodes() {
+  if (!violCodePromise) violCodePromise = (async () => {
+    try {
+      const res = await fetch(VIOL_CSV);
+      if (!res.ok) throw 0;
+      return parseViolCsv(await res.text());
+    } catch { return {}; }
+  })();
+  return violCodePromise;
+}
+
 // ---- Rendering --------------------------------------------------------
 // One restaurant has many inspection rows. Collapse them by camis, keeping
 // the latest inspection and the most recent letter grade separately.
@@ -270,6 +353,18 @@ function groupByRestaurant(rows) {
   return Object.values(byId);
 }
 
+// Plain-English meaning of each grade, shown under the grade line.
+const GRADE_CONTEXT = {
+  A: 'Cleanest tier (0–13 points). About 9 in 10 NYC restaurants earn an A.',
+  B: 'Some violations found (14–27 points) — not necessarily unsafe.',
+  C: '28+ points: multiple or more serious violations at this inspection.',
+};
+const PENDING_CONTEXT = 'A grade is issued after a graded cycle inspection; a below-A result is re-inspected (often within about 30 days) before a letter is posted.';
+function gradeContextHtml(grade) {
+  const c = GRADE_CONTEXT[grade];
+  return c ? '<div class="grade-ctx">' + c + '</div>' : '';
+}
+
 function scoreBarHtml(score, grade) {
   const s = parseInt(score);
   if (isNaN(s)) return '';
@@ -295,7 +390,9 @@ function violationsHtml(violations) {
       ? '<span class="viol-flag ' + (isCrit ? 'viol-crit' : 'viol-ncrit') + '">' + htmlEsc(v.flag) + '</span>'
       : '';
     const codeHtml = v.code ? '<span class="viol-code">' + htmlEsc(v.code) + '</span>' : '';
-    return '<div class="viol-item">' + flagHtml + codeHtml + '<div class="viol-desc">' + htmlEsc(v.desc) + '</div></div>';
+    const cat = violCodeMap[String(v.code || '').toUpperCase().trim()] || '';
+    const catHtml = cat ? '<span class="viol-cat">' + htmlEsc(cat) + '</span>' : '';
+    return '<div class="viol-item">' + flagHtml + codeHtml + catHtml + '<div class="viol-desc">' + htmlEsc(v.desc) + '</div></div>';
   }).join('');
   return '<details class="viols"><summary class="viols-summary">' + htmlEsc(countLabel) + '</summary><div class="viols-body">' + items + '</div></details>';
 }
@@ -326,6 +423,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
   const gradeLine = graded
     ? 'Grade <b>' + htmlEsc(graded.grade) + '</b> \xb7 score ' + htmlEsc(graded.score ?? '—') + ' \xb7 graded ' + fmtDate(graded.grade_date)
     : '<span class="pending">No letter grade on record yet</span> (latest score ' + htmlEsc(latest.score ?? '—') + ')';
+  const ctx = graded ? gradeContextHtml(grade) : '<div class="grade-ctx">' + PENDING_CONTEXT + '</div>';
   const scoreBar = scoreBarHtml(graded ? graded.score : latest.score, grade);
   const metaParts = [];
   if (info.cuisine_description) metaParts.push(htmlEsc(info.cuisine_description));
@@ -337,6 +435,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + '<div class="top"><div class="grade ' + gradeClass(grade) + '">' + htmlEsc(grade || '?') + '</div>'
     + '<div><div class="name">' + htmlEsc(info.dba || 'Unknown') + '</div><div class="addr">' + addr + '</div>' + meta + '</div></div>'
     + '<div class="detail">' + gradeLine + '</div>'
+    + ctx
     + scoreBar
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
     + violationsHtml(violations)
@@ -391,6 +490,7 @@ async function search() {
 
   btn.disabled = true;
   resultsEl.innerHTML = '';
+  violCodeMap = await loadViolCodes();   // cached after first call; degrades to {} on failure
 
   const words = originalDisplay.split(' ');
   let lastUrl = '';
@@ -570,6 +670,7 @@ async function onMapsLink() {
   }
 }
 
+loadViolCodes();   // prime the violation-code reference in the background
 btn.addEventListener('click', search);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);

@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (37 cases, 129 assertions)
+- `.claude/skills/test/` — Playwright test skill (45 cases, 161 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -315,7 +315,8 @@ The `<script>` is organised into labelled sections:
 | Config & DOM | constants, cached element refs |
 | Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone` |
 | NYC DOHMH API | `buildUrl`, `getJSON` (with corsproxy.io fallback) |
-| Rendering | `groupByRestaurant`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
+| Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
+| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
 | Search | `search` |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Wiring | `onMapsLink` (with auto-retry), event listeners, deep-link init on load |
@@ -401,6 +402,47 @@ The four render helpers:
    `currentlyClosed`**. This is the only place red is used in the app.
 
 All four run every field through `htmlEsc()` (XSS guard extends to the new fields).
+
+---
+
+## Grade context & explainer (v1.18.0)
+
+Two pieces of plain-English interpretation, both content-only (no behaviour change to
+search/resolve):
+
+1. **Per-card grade-context line.** `cardHtml` renders a `.grade-ctx` line under the grade
+   line. For a graded row it's `gradeContextHtml(grade)` — a lookup in `GRADE_CONTEXT`
+   (A = "Cleanest tier (0–13 points). About 9 in 10 NYC restaurants earn an A.", B/C
+   analogues). When there's no grade on record it shows `PENDING_CONTEXT` instead
+   (explains that a below-A result is re-inspected before a letter is posted). An unknown
+   letter falls through `GRADE_CONTEXT` to `''`.
+
+2. **Static "What do these grades mean?" panel.** A `<details class="about" id="about">`
+   lives permanently in the body (after `#results`), collapsed by default — so it needs no
+   search and no JS. It covers: lower-is-better scoring (A 0–13 / B 14–27 / C 28+), critical
+   vs. upkeep violations, "~9 in 10 get an A so a B/C is informative, but score matters as
+   much as the letter near the cutoff", what Grade Pending and Closed-by-DOHMH mean, the
+   sliding inspection cycle, and the CDC Salmonella-decline finding, with a source link to
+   the NYC Health grading FAQ. Facts are sourced from the June 2026 grading-semantics
+   research run (see session transcript / the research notes above).
+
+## Violation-code categories (v1.18.0)
+
+Best-effort enrichment that labels each violation with a plain-English category. `loadViolCodes()`
+fetches NYC Health's public reference CSV
+(`raw.githubusercontent.com/nychealth/Food-Safety-Health-Code-Reference/main/Violation-Health-Code-Mapping.csv`
+— keyless, CORS-open). `parseViolCsv` locates the `Violation_Code` and `Category_Description`
+columns **by name** (tolerant to reordering; `splitCsvLine` handles quoted commas; a leading BOM
+is stripped) and builds `violCodeMap` = `{ CODE -> category }`. `violationsHtml` adds a `.viol-cat`
+label per violation when its `code` maps.
+
+The load is **primed on page load** and `await`ed once at the top of `search()` (cached via
+`violCodePromise`, so later searches don't refetch). Every failure mode degrades silently to
+`{}` — fetch error, non-200, missing columns, or a schema that doesn't match all just mean **no
+category label**, never a broken card. Because the sandbox can't reach the CSV (and the research
+agent couldn't fetch the raw file either — the column names are from search snippets, not a direct
+read), **the live rendering of `.viol-cat` is unverified** and must be confirmed on the deployed
+page; if the real CSV's columns differ, tighten `parseViolCsv`'s column-matching.
 
 ---
 
@@ -529,7 +571,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (42 cases, 145 assertions — all must pass):**
+**Required test cases (45 cases, 161 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -578,6 +620,11 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 40 | nameFromUrl extracts from `/maps/search/?api=1&query=NAME` | full URL via `triggerMaps`, no resolver call; `#q` filled with MAZZAT; card shown |
 | 41 | stripShortLinkQuery drops tracking query string from short links | short link with `?g_st=...` via `triggerMaps`; captured `mapu` request URL has no `g_st`; card shown |
 | 42 | splitPlace falls back to ZIP when no borough is found in the address | mapu returns place URL with address lacking a borough name but containing a 5-digit ZIP; `#loc === '11231'`; card shown |
+| 43 | "What do these grades mean?" explainer panel (static) | `#about` present and collapsed; text includes `0–13` + "lower is better" + mentions "Grade Pending" and "Closed by DOHMH" |
+| 44 | Per-card grade-context line (A tier) | `.grade-ctx` present; text mentions "9 in 10" |
+| 44b | Pending context line when no letter grade | row with `grade:null` → `.grade-ctx` present; text mentions "re-inspected" |
+| 45 | Violation category label from reference CSV | mock `raw.githubusercontent.com` CSV; violation `04L` → `.viol-cat` text === "Vermin / Pests" |
+| 45b | Violation category degrades gracefully when CSV unavailable | mock CSV → `E`; `.viol-item` still renders; no `.viol-cat` |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -606,6 +653,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the `?query=` param test (test 40, v1.16.2): trigger `https://www.google.com/maps/search/?api=1&query=Mazzat&g_st=ic` via `triggerMaps`. Mock only `43nn-pn8j` to `J([MAZZAT])` — no resolver routes should be hit, since `nameFromUrl` resolves `?query=` directly without a network call. Wait for `.card`, then assert `#q` (uppercased) `=== 'MAZZAT'` and `.name === 'MAZZAT'`.
 - For the `stripShortLinkQuery` test (test 41, v1.16.3): trigger `https://maps.app.goo.gl/TEST?g_st=com.apple.shortcuts.Run-Workflow.(null)` via `triggerMaps`. Mock `mapu.retiolus.net` with a function handler that captures the request URL and returns `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z' })`; mock `microlink.io`/`jina.ai` as always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert the captured `mapu` URL's `link` param (decoded) does NOT include `g_st`, and `.name === 'MAZZAT'`.
 - For the splitPlace ZIP-fallback test (test 42, v1.17.0): mock mapu to return `{ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+11231/@40.67,-73.99' }` — note the address has no borough keyword (no "Brooklyn"/"Manhattan"/etc), only a 5-digit ZIP. Mock `microlink.io`/`jina.ai` as always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc === '11231'` (proves the ZIP fallback in `splitPlace` fired since `boroFromAddr` found nothing) and `.name === 'MAZZAT'`.
+- For the about-grades panel test (test 43, v1.18.0): static — `setupRoute(p, [])`, no search. Assert `#about` present, `el.open === false`, and its `textContent` includes `0–13` (use an en dash, not a hyphen — it must match the HTML) and `lower is better`, and mentions both `Grade Pending` and `Closed by DOHMH`.
+- For the grade-context tests (tests 44/44b, v1.18.0): plain DOHMH search. Test 44: `J([MAZZAT])` (grade A) → `.grade-ctx` present, text includes `9 in 10`. Test 44b: a row with `grade:null, grade_date:null` → `.grade-ctx` present, text includes `re-inspected` (the `PENDING_CONTEXT` string).
+- For the violation-category tests (tests 45/45b, v1.18.0): test 45 mocks `raw.githubusercontent.com` → `TX(csv)` where `csv` is a header line `Violation_Code,Health_Code,Violation_Summary,Category_Description` plus a row `04L,§81.11,Live mice present,Vermin / Pests`, and `43nn-pn8j` with a row whose `violation_code:'04L'` + a `violation_description`. Wait for `.card`, assert `.viol-cat` present and text `=== 'Vermin / Pests'`. Test 45b mocks `raw.githubusercontent.com` → `E`; assert the `.viol-item` still renders and `.viol-cat` is absent (graceful degradation). **All other tests leave `raw.githubusercontent.com` unmocked** — `setupRoute` aborts it, `loadViolCodes` swallows the failure → `{}` → no `.viol-cat` and no `pageerror`, so the existing cases are unaffected.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -690,7 +740,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.17.0**
+Current: **v1.18.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -723,6 +773,7 @@ Notable versions:
 - v1.16.2 — `nameFromUrl` now also tries the `?query=` param (Google's `/maps/search/?api=1&query=NAME` share-link format) when `/maps/place/` and `?q=` both miss; test 40 added (40 cases, 139 assertions)
 - v1.16.3 — `stripShortLinkQuery` strips any query string from `maps.app.goo.gl`/`goo.gl/maps` short links before resolving — share-sheet tracking params (e.g. iOS Shortcuts' `?g_st=com.apple.shortcuts...`) appended to the short code can break the unshortener's redirect lookup; `google.com/maps` URLs are unaffected; test 41 added (41 cases, 142 assertions)
 - v1.17.0 — `splitPlace` now falls back to a 5-digit ZIP mined from the address when no borough name is found, prefilling `#loc` with the ZIP (accepted by `buildUrl`'s `zipcode='${loc}'` clause); test 42 added (42 cases, 145 assertions)
+- v1.18.0 — interpretive context: a per-card `.grade-ctx` line (plain-English meaning of A/B/C, or a pending explainer) and a static collapsible "What do these grades mean?" panel (scoring, critical-vs-upkeep, Pending/Closed meaning, inspection cycle, CDC Salmonella finding, sourced to NYC Health); plus best-effort violation-code categories — `loadViolCodes` pulls NYC Health's keyless CORS-open reference CSV and `violationsHtml` shows a `.viol-cat` label per code, degrading silently if the CSV is unreachable or its schema differs (live `.viol-cat` rendering is unverified from the sandbox — confirm on deploy); tests 43–45b added (45 cases, 161 assertions)
 
 ## Known-good Maps parsing baseline
 
