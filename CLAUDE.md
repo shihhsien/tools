@@ -142,10 +142,13 @@ Maps URL / resolver response
         ↓
 nameFromUrl(url)          — extracts from /maps/place/NAME, ?q=NAME, or ?query=NAME
         ↓
-splitPlace(name, boro)    — splits "Name, 123 St, Brooklyn" on first comma;
-                            mines trailing parts for borough via boroFromAddr()
+splitPlace(name, boro)    — splits "Name, 123 St, Brooklyn, NY 11231" on first comma;
+                            mines trailing parts for borough via boroFromAddr(),
+                            falling back to a 5-digit ZIP (v1.17.0) when no
+                            borough name is found
         ↓
-{ name, boro }            — name → #q input, boro → #loc input
+{ name, boro }            — name → #q input, boro → #loc input (boro may hold
+                            either a borough name or a ZIP — #loc/buildUrl accept both)
 ```
 
 `cleanTitle(raw)` strips " - Google Maps" suffix and rejects empty, Google-only,
@@ -203,10 +206,10 @@ itself is the richest free, client-side source, not the resolver metadata:**
 
 1. **`/maps/place/NAME/` path often already contains the full address.** Place-card
    shares encode it as comma segments: `/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/`.
-   `splitPlace` already splits on the first comma and mines the borough from the rest;
-   it does **not** currently extract the ZIP (a `/\b\d{5}\b/` regex on the trailing
-   segments would). Present for place-card shares, **absent** for dropped-pin /
-   coordinate shares (`/maps/place/lat,+lng/` — correctly rejected by `isName`).
+   `splitPlace` splits on the first comma and mines the borough from the rest, falling
+   back to a `/\b\d{5}\b/` ZIP match (v1.17.0) when no borough name is found. Present
+   for place-card shares, **absent** for dropped-pin / coordinate shares
+   (`/maps/place/lat,+lng/` — correctly rejected by `isName`).
 
 2. **`@lat,lng` is always present** on a resolved place URL. The only path to an
    address when the place path is name-only is **reverse geocoding** the coordinates.
@@ -526,7 +529,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (41 cases, 142 assertions — all must pass):**
+**Required test cases (42 cases, 145 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -574,6 +577,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 39 | viaMicrolink falls back to title for borough when URL has none | mock microlink `data.url` with no borough + `data.title` containing "Brooklyn, NY"; `#loc === 'BROOKLYN'`; card shown with name MAZZAT |
 | 40 | nameFromUrl extracts from `/maps/search/?api=1&query=NAME` | full URL via `triggerMaps`, no resolver call; `#q` filled with MAZZAT; card shown |
 | 41 | stripShortLinkQuery drops tracking query string from short links | short link with `?g_st=...` via `triggerMaps`; captured `mapu` request URL has no `g_st`; card shown |
+| 42 | splitPlace falls back to ZIP when no borough is found in the address | mapu returns place URL with address lacking a borough name but containing a 5-digit ZIP; `#loc === '11231'`; card shown |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -601,6 +605,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the microlink title-borough-fallback test (test 39, v1.16.1): trigger a `maps.app.goo.gl` short link via `triggerMaps`. Mock `mapu.retiolus.net` and `jina.ai` as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z', title: 'Mazzat - Brooklyn, NY - Google Maps' } }` — note the `data.url` has no borough (no comma-separated address segment), but `data.title` has "Brooklyn, NY". Mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fallback fired since `boroFromAddr(data.url)` finds nothing) and `.name === 'MAZZAT'`.
 - For the `?query=` param test (test 40, v1.16.2): trigger `https://www.google.com/maps/search/?api=1&query=Mazzat&g_st=ic` via `triggerMaps`. Mock only `43nn-pn8j` to `J([MAZZAT])` — no resolver routes should be hit, since `nameFromUrl` resolves `?query=` directly without a network call. Wait for `.card`, then assert `#q` (uppercased) `=== 'MAZZAT'` and `.name === 'MAZZAT'`.
 - For the `stripShortLinkQuery` test (test 41, v1.16.3): trigger `https://maps.app.goo.gl/TEST?g_st=com.apple.shortcuts.Run-Workflow.(null)` via `triggerMaps`. Mock `mapu.retiolus.net` with a function handler that captures the request URL and returns `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z' })`; mock `microlink.io`/`jina.ai` as always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert the captured `mapu` URL's `link` param (decoded) does NOT include `g_st`, and `.name === 'MAZZAT'`.
+- For the splitPlace ZIP-fallback test (test 42, v1.17.0): mock mapu to return `{ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+11231/@40.67,-73.99' }` — note the address has no borough keyword (no "Brooklyn"/"Manhattan"/etc), only a 5-digit ZIP. Mock `microlink.io`/`jina.ai` as always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc === '11231'` (proves the ZIP fallback in `splitPlace` fired since `boroFromAddr` found nothing) and `.name === 'MAZZAT'`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -685,7 +690,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.16.3**
+Current: **v1.17.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -717,6 +722,7 @@ Notable versions:
 - v1.16.1 — `viaMicrolink` now falls back to `boroFromAddr(data.title)` when `boroFromAddr(data.url)` finds nothing, improving borough extraction for short-link resolutions where the title carries the address but the resolved URL doesn't
 - v1.16.2 — `nameFromUrl` now also tries the `?query=` param (Google's `/maps/search/?api=1&query=NAME` share-link format) when `/maps/place/` and `?q=` both miss; test 40 added (40 cases, 139 assertions)
 - v1.16.3 — `stripShortLinkQuery` strips any query string from `maps.app.goo.gl`/`goo.gl/maps` short links before resolving — share-sheet tracking params (e.g. iOS Shortcuts' `?g_st=com.apple.shortcuts...`) appended to the short code can break the unshortener's redirect lookup; `google.com/maps` URLs are unaffected; test 41 added (41 cases, 142 assertions)
+- v1.17.0 — `splitPlace` now falls back to a 5-digit ZIP mined from the address when no borough name is found, prefilling `#loc` with the ZIP (accepted by `buildUrl`'s `zipcode='${loc}'` clause); test 42 added (42 cases, 145 assertions)
 
 ## Known-good Maps parsing baseline
 

@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 41 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 42 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 41-case Playwright test suite, fix any failures, and confirm 142/142 assertions pass.
+Run the full 42-case Playwright test suite, fix any failures, and confirm 145/145 assertions pass.
 
 ## Setup
 
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 41 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 42 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `142 tests: 142 passed, 0 failed`
+Expected output ends with: `145 tests: 145 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -237,6 +237,13 @@ return r.fulfill({ ...J({ full_link: 'https://www.google.com/maps/place/Mazzat/@
 then assert `decodeURIComponent(capturedUrl)` does NOT include `g_st` (proves
 `stripShortLinkQuery` dropped the tracking query string before it reached `mapu`'s `link=` param),
 and `.name === 'MAZZAT'`.
+
+### splitPlace ZIP-fallback test (test 42, v1.17.0)
+Mock `mapu.retiolus.net` to return `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+11231/@40.67,-73.99' })`
+— the address has a 5-digit ZIP but no borough keyword. Mock `microlink.io`/`jina.ai` as
+always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Trigger the short link via `triggerMaps`,
+wait for `.card`, then assert `#loc === '11231'` (proves `splitPlace`'s ZIP fallback fired since
+`boroFromAddr` found nothing) and `.name === 'MAZZAT'`.
 
 ## Step 4 — Iterate
 

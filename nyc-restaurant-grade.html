@@ -157,7 +157,7 @@
 <div id="status" class="status" role="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.16.3</div>
+<div class="ver">v1.17.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -465,11 +465,15 @@ function boroFromAddr(addr) {
   return '';
 }
 
-// Resolvers may return "Name, 123 St, Brooklyn, NY" — keep the name, mine the boro.
+// Resolvers may return "Name, 123 St, Brooklyn, NY 11231" — keep the name, mine
+// the rest for a borough name, falling back to a 5-digit ZIP when no borough is
+// found. #loc accepts either via buildUrl's `boro like` / `zipcode=` clauses.
 function splitPlace(name, boro) {
   if (!name.includes(',')) return { name, boro };
   const [first, ...rest] = name.split(',');
-  return { name: first.trim(), boro: boro || boroFromAddr(rest.join(',')) };
+  const addr = rest.join(',');
+  const zip = (addr.match(/\b\d{5}\b/) || [])[0] || '';
+  return { name: first.trim(), boro: boro || boroFromAddr(addr) || zip };
 }
 
 function timeoutFetch(url, opts, ms = 6000) {
