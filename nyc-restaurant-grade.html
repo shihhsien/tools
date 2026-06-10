@@ -157,7 +157,7 @@
 <div id="status" class="status" role="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.16.2</div>
+<div class="ver">v1.16.3</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -417,6 +417,15 @@ async function search() {
 }
 
 // ---- Google Maps link → restaurant name -------------------------------
+// Short links (maps.app.goo.gl/CODE) carry the destination entirely in the
+// path; any query string is share-sheet tracking cruft (e.g. iOS Shortcuts'
+// ?g_st=com.apple.shortcuts...) appended by the OS, not part of the link.
+// Sending it to the unshortener can break the redirect lookup. Full
+// google.com/maps URLs keep their query string — that's where ?q=/?query= live.
+function stripShortLinkQuery(url) {
+  return /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(url) ? url.split('?')[0] : url;
+}
+
 // Pull a place name out of a Maps URL (or any text containing one). No network.
 function nameFromUrl(url) {
   if (!url) return '';
@@ -528,8 +537,9 @@ async function resolveMapsLink(url) {
 
 // ---- Wiring -----------------------------------------------------------
 async function onMapsLink() {
-  const url = mapsInput.value.trim();
-  if (!url.startsWith('http') || !MAPS_HOSTS.test(url)) return;
+  const raw = mapsInput.value.trim();
+  if (!raw.startsWith('http') || !MAPS_HOSTS.test(raw)) return;
+  const url = stripShortLinkQuery(raw);
 
   if (DEBUG) { debugEl.innerHTML = ''; dbg(`Maps link: ${url}`); }
   btn.disabled = true;

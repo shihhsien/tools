@@ -110,7 +110,13 @@ restaurant name. Two cases:
 the URL itself, resolved instantly with regex + URLSearchParams. No network.
 
 **Short link** (`maps.app.goo.gl/CODE`) — must follow Google's redirect
-server-side. Three resolvers race via `Promise.any` with a 6 s timeout:
+server-side. Before resolving, `stripShortLinkQuery(url)` (v1.16.3) drops any
+query string from `maps.app.goo.gl`/`goo.gl/maps` URLs — short codes carry the
+destination entirely in the path, and a query string here is share-sheet
+tracking cruft (e.g. iOS Shortcuts appends `?g_st=com.apple.shortcuts...`) that
+can break the unshortener's redirect lookup. `google.com/maps` URLs are left
+untouched, since their query string is where `?q=`/`?query=` live. Three
+resolvers race via `Promise.any` with a 6 s timeout:
 
 1. `viaMapu` → `mapu.retiolus.net/unshortener?link=URL`
    Returns `{ full_link }`. Purpose-built for maps.app.goo.gl, uses a
@@ -308,7 +314,7 @@ The `<script>` is organised into labelled sections:
 | NYC DOHMH API | `buildUrl`, `getJSON` (with corsproxy.io fallback) |
 | Rendering | `groupByRestaurant`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
 | Search | `search` |
-| Maps parsing | `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
+| Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Wiring | `onMapsLink` (with auto-retry), event listeners, deep-link init on load |
 
 ---
@@ -520,7 +526,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (40 cases, 139 assertions — all must pass):**
+**Required test cases (41 cases, 142 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -567,6 +573,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 38 | Card meta line (cuisine, phone, map link) + `role="status"` | `.meta` text includes cuisine; `.meta a[href^="tel:"]` text is formatted phone; `.meta a[href*="maps.google.com"]` href includes lat/lng; `#status` has `role="status"` |
 | 39 | viaMicrolink falls back to title for borough when URL has none | mock microlink `data.url` with no borough + `data.title` containing "Brooklyn, NY"; `#loc === 'BROOKLYN'`; card shown with name MAZZAT |
 | 40 | nameFromUrl extracts from `/maps/search/?api=1&query=NAME` | full URL via `triggerMaps`, no resolver call; `#q` filled with MAZZAT; card shown |
+| 41 | stripShortLinkQuery drops tracking query string from short links | short link with `?g_st=...` via `triggerMaps`; captured `mapu` request URL has no `g_st`; card shown |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -593,6 +600,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the card meta test (test 38, v1.16.0): mock a row with `cuisine_description:'Japanese'`, `phone:'2125551234'`, `latitude:'40.7580'`, `longitude:'-73.9855'`. Assert `.meta` textContent includes `Japanese`; `.meta a[href^="tel:"]` textContent === `(212) 555-1234` (via `fmtPhone`); `.meta a[href*="maps.google.com"]` href includes `40.7580,-73.9855`; and `#status` `getAttribute('role') === 'status'`.
 - For the microlink title-borough-fallback test (test 39, v1.16.1): trigger a `maps.app.goo.gl` short link via `triggerMaps`. Mock `mapu.retiolus.net` and `jina.ai` as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z', title: 'Mazzat - Brooklyn, NY - Google Maps' } }` — note the `data.url` has no borough (no comma-separated address segment), but `data.title` has "Brooklyn, NY". Mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fallback fired since `boroFromAddr(data.url)` finds nothing) and `.name === 'MAZZAT'`.
 - For the `?query=` param test (test 40, v1.16.2): trigger `https://www.google.com/maps/search/?api=1&query=Mazzat&g_st=ic` via `triggerMaps`. Mock only `43nn-pn8j` to `J([MAZZAT])` — no resolver routes should be hit, since `nameFromUrl` resolves `?query=` directly without a network call. Wait for `.card`, then assert `#q` (uppercased) `=== 'MAZZAT'` and `.name === 'MAZZAT'`.
+- For the `stripShortLinkQuery` test (test 41, v1.16.3): trigger `https://maps.app.goo.gl/TEST?g_st=com.apple.shortcuts.Run-Workflow.(null)` via `triggerMaps`. Mock `mapu.retiolus.net` with a function handler that captures the request URL and returns `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z' })`; mock `microlink.io`/`jina.ai` as always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert the captured `mapu` URL's `link` param (decoded) does NOT include `g_st`, and `.name === 'MAZZAT'`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -677,7 +685,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.16.2**
+Current: **v1.16.3**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -708,6 +716,7 @@ Notable versions:
 - v1.16.0 — `$select` widened to fetch `phone`, `cuisine_description`, `nta`, `latitude`, `longitude`; cards show a `.meta` line with cuisine, formatted `tel:` phone link, and "Map ↗" link; `--C` darkened `#e07d2a`→`#c96f20` (3.63:1, clears 3:1 for the C grade chip/placard); `.grade-hist.B`/`.grade-hist.C` use dedicated darker backgrounds (`#21703e`/`#a05819`, both ≥4.5:1) for the small history chips; `#status` gets `role="status"`; test 38 added (38 cases, 133 assertions)
 - v1.16.1 — `viaMicrolink` now falls back to `boroFromAddr(data.title)` when `boroFromAddr(data.url)` finds nothing, improving borough extraction for short-link resolutions where the title carries the address but the resolved URL doesn't
 - v1.16.2 — `nameFromUrl` now also tries the `?query=` param (Google's `/maps/search/?api=1&query=NAME` share-link format) when `/maps/place/` and `?q=` both miss; test 40 added (40 cases, 139 assertions)
+- v1.16.3 — `stripShortLinkQuery` strips any query string from `maps.app.goo.gl`/`goo.gl/maps` short links before resolving — share-sheet tracking params (e.g. iOS Shortcuts' `?g_st=com.apple.shortcuts...`) appended to the short code can break the unshortener's redirect lookup; `google.com/maps` URLs are unaffected; test 41 added (41 cases, 142 assertions)
 
 ## Known-good Maps parsing baseline
 
