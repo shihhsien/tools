@@ -157,7 +157,7 @@
 <div id="status" class="status" role="status"></div>
 <div id="results"></div>
 <div id="debug-log"></div>
-<div class="ver">v1.16.1</div>
+<div class="ver">v1.16.2</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -429,8 +429,10 @@ function nameFromUrl(url) {
     return isName(name) ? name : '';
   }
   try {
-    const q = (new URL(url).searchParams.get('q') || '').trim();
-    dbg(`nameFromUrl ?q: "${q}" ${isName(q) ? "✓" : "✗ rejected (no letters or contains ?/=)"}`);
+    const params = new URL(url).searchParams;
+    // Try ?q= (classic share format) then ?query= (Maps "search/?api=1&query=" share format).
+    const q = (params.get('q') || params.get('query') || '').trim();
+    dbg(`nameFromUrl ?q/?query: "${q}" ${isName(q) ? "✓" : "✗ rejected (no letters or contains ?/=)"}`);
     return isName(q) ? q : '';
   } catch { return ''; }
 }

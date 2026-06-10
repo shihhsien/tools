@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 39 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 40 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 39-case Playwright test suite, fix any failures, and confirm 136/136 assertions pass.
+Run the full 40-case Playwright test suite, fix any failures, and confirm 139/139 assertions pass.
 
 ## Setup
 
@@ -97,7 +97,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 39 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 40 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -113,7 +113,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `136 tests: 136 passed, 0 failed`
+Expected output ends with: `139 tests: 139 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -221,6 +221,12 @@ as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www
 `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert:
 - `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fired since `boroFromAddr(data.url)` found nothing)
 - `.name === 'MAZZAT'`
+
+### nameFromUrl ?query= param fallback (test 40, v1.16.2)
+Trigger `https://www.google.com/maps/search/?api=1&query=Mazzat&g_st=ic` via `triggerMaps`. Mock
+only `43nn-pn8j` to `J([MAZZAT])` — `nameFromUrl` resolves `?query=` directly (no `/maps/place/`
+or `?q=` present), so no resolver routes (mapu/microlink/jina) should ever be hit. Wait for
+`.card`, then assert `#q` (uppercased) `=== 'MAZZAT'` and `.name === 'MAZZAT'`.
 
 ## Step 4 — Iterate
 

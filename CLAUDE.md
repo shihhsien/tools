@@ -134,7 +134,7 @@ here — Open it ↗" message with a tappable link.
 ```
 Maps URL / resolver response
         ↓
-nameFromUrl(url)          — extracts from /maps/place/NAME or ?q=NAME
+nameFromUrl(url)          — extracts from /maps/place/NAME, ?q=NAME, or ?query=NAME
         ↓
 splitPlace(name, boro)    — splits "Name, 123 St, Brooklyn" on first comma;
                             mines trailing parts for borough via boroFromAddr()
@@ -149,10 +149,14 @@ titles** (`JUNK_TITLE`: "Dynamic Link Not Found", "Page Not Found", "Not Found",
 `maps.app.goo.gl` short link resolves to Google's Firebase error page, whose
 `<title>` is **"Dynamic Link Not Found"** — without the block, `viaMicrolink`
 scrapes that title and the app searches DOHMH for "DYNAMIC LINK NOT FOUND".
-`nameFromUrl` applies the same validity check to both the `/maps/place/` and `?q=`
+`nameFromUrl` applies the same validity check to the `/maps/place/`, `?q=`, and `?query=`
 extracted values — rejects coordinates (no letters), URL fragments, and short codes
 containing query chars. This prevents resolver garbage (raw short codes, expanded
 coordinate URLs, tracking params like `?g_st=ic`) from leaking into the name field.
+The `?query=` fallback (v1.16.2) handles Google's `/maps/search/?api=1&query=NAME`
+share-link format, which `?q=` alone misses — `URLSearchParams` keeps each param's
+value clean of sibling tracking params (e.g. `&g_st=ic`), so no extra stripping is
+needed once the right param name is checked.
 `boroFromAddr(text)` regex-matches Brooklyn/Kings, Manhattan/New York NY, Queens, Bronx,
 Staten Island/Richmond from any free-form address string.
 
@@ -516,7 +520,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (39 cases, 136 assertions — all must pass):**
+**Required test cases (40 cases, 139 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -562,6 +566,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 37b | Closure banner cleared after a later re-open action | no `.closure-banner` when a re-opened action follows the closure |
 | 38 | Card meta line (cuisine, phone, map link) + `role="status"` | `.meta` text includes cuisine; `.meta a[href^="tel:"]` text is formatted phone; `.meta a[href*="maps.google.com"]` href includes lat/lng; `#status` has `role="status"` |
 | 39 | viaMicrolink falls back to title for borough when URL has none | mock microlink `data.url` with no borough + `data.title` containing "Brooklyn, NY"; `#loc === 'BROOKLYN'`; card shown with name MAZZAT |
+| 40 | nameFromUrl extracts from `/maps/search/?api=1&query=NAME` | full URL via `triggerMaps`, no resolver call; `#q` filled with MAZZAT; card shown |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -587,6 +592,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the closure tests (37/37b): closure is detected by `action.includes('Closed by DOHMH')` and cleared only if a later row's `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37 has a lone closure row (assert `.closure-banner` present); test 37b adds a later re-opened row (assert `.closure-banner` absent).
 - For the card meta test (test 38, v1.16.0): mock a row with `cuisine_description:'Japanese'`, `phone:'2125551234'`, `latitude:'40.7580'`, `longitude:'-73.9855'`. Assert `.meta` textContent includes `Japanese`; `.meta a[href^="tel:"]` textContent === `(212) 555-1234` (via `fmtPhone`); `.meta a[href*="maps.google.com"]` href includes `40.7580,-73.9855`; and `#status` `getAttribute('role') === 'status'`.
 - For the microlink title-borough-fallback test (test 39, v1.16.1): trigger a `maps.app.goo.gl` short link via `triggerMaps`. Mock `mapu.retiolus.net` and `jina.ai` as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z', title: 'Mazzat - Brooklyn, NY - Google Maps' } }` — note the `data.url` has no borough (no comma-separated address segment), but `data.title` has "Brooklyn, NY". Mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fallback fired since `boroFromAddr(data.url)` finds nothing) and `.name === 'MAZZAT'`.
+- For the `?query=` param test (test 40, v1.16.2): trigger `https://www.google.com/maps/search/?api=1&query=Mazzat&g_st=ic` via `triggerMaps`. Mock only `43nn-pn8j` to `J([MAZZAT])` — no resolver routes should be hit, since `nameFromUrl` resolves `?query=` directly without a network call. Wait for `.card`, then assert `#q` (uppercased) `=== 'MAZZAT'` and `.name === 'MAZZAT'`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -671,7 +677,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.16.1**
+Current: **v1.16.2**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -701,6 +707,7 @@ Notable versions:
 - v1.15.0 — violation list with critical/not-critical chips and violation code; score bar with A/B/C threshold markers and contextual notes; inspection history timeline (last 6 inspections); closure banner when restaurant is currently closed by DOHMH; tests 33–37b added (37 cases, 129 assertions)
 - v1.16.0 — `$select` widened to fetch `phone`, `cuisine_description`, `nta`, `latitude`, `longitude`; cards show a `.meta` line with cuisine, formatted `tel:` phone link, and "Map ↗" link; `--C` darkened `#e07d2a`→`#c96f20` (3.63:1, clears 3:1 for the C grade chip/placard); `.grade-hist.B`/`.grade-hist.C` use dedicated darker backgrounds (`#21703e`/`#a05819`, both ≥4.5:1) for the small history chips; `#status` gets `role="status"`; test 38 added (38 cases, 133 assertions)
 - v1.16.1 — `viaMicrolink` now falls back to `boroFromAddr(data.title)` when `boroFromAddr(data.url)` finds nothing, improving borough extraction for short-link resolutions where the title carries the address but the resolved URL doesn't
+- v1.16.2 — `nameFromUrl` now also tries the `?query=` param (Google's `/maps/search/?api=1&query=NAME` share-link format) when `/maps/place/` and `?q=` both miss; test 40 added (40 cases, 139 assertions)
 
 ## Known-good Maps parsing baseline
 
