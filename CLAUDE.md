@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (47 cases, 171 assertions)
+- `.claude/skills/test/` — Playwright test skill (47 cases, 175 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -598,7 +598,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (47 cases, 171 assertions — all must pass):**
+**Required test cases (47 cases, 175 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -655,6 +655,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 46 | `?share=` blob with name+address+link — direct search, no resolvers | resolver routes never hit; `#q` = name; `#loc` = borough from address line; card shown |
 | 46b | `?share=` bare short link falls back to resolver pipeline | payload is only a short link; mock mapu → card shown |
 | 47 | `?share=` name search finds nothing → falls back to URL resolution | name "Ghostplace" returns `[]`, then resolved URL's name returns a row; ≥2 DOHMH calls; card shown |
+| 47b | `?share=` junk page title rejected, no search fired | payload `Invalid Dynamic Link` (no URL); DOHMH never called; `#q` stays empty; status shows "Couldn't read" |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -687,7 +688,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the grade-context tests (tests 44/44b, v1.18.0): plain DOHMH search. Test 44: `J([MAZZAT])` (grade A) → `.grade-ctx` present, text includes `9 in 10`. Test 44b: a row with `grade:null, grade_date:null` → `.grade-ctx` present, text includes `re-inspected` (the `PENDING_CONTEXT` string).
 - For the violation-category tests (tests 45/45b, v1.18.0): test 45 mocks `raw.githubusercontent.com` → `TX(csv)` where `csv` is a header line `Violation_Code,Health_Code,Violation_Summary,Category_Description` plus a row `04L,§81.11,Live mice present,Vermin / Pests`, and `43nn-pn8j` with a row whose `violation_code:'04L'` + a `violation_description`. Wait for `.card`, assert `.viol-cat` present and text `=== 'Vermin / Pests'`. Test 45b mocks `raw.githubusercontent.com` → `E`; assert the `.viol-item` still renders and `.viol-cat` is absent (graceful degradation). **All other tests leave `raw.githubusercontent.com` unmocked** — `setupRoute` aborts it, `loadViolCodes` swallows the failure → `{}` → no `.viol-cat` and no `pageerror`, so the existing cases are unaffected.
 
-- For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`).
+- For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`). Test 47b's payload is the bare text `Invalid Dynamic Link` (a Firebase error-page title — iOS coercing a URL-only share payload to text can fetch the link's page title, and the g_st-poisoned short link serves Firebase's error page). `parseShare` rejects `JUNK_TITLE` matches as names; with no URL either, `onShare` shows the "Couldn't read the shared content" status and never queries DOHMH (mock `43nn-pn8j` with a hit-flag handler and assert it stays false, `#q` stays empty).
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -772,7 +773,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.19.0**
+Current: **v1.19.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -808,6 +809,7 @@ Notable versions:
 - v1.18.0 — interpretive context: a per-card `.grade-ctx` line (plain-English meaning of A/B/C, or a pending explainer) and a static collapsible "What do these grades mean?" panel (scoring, critical-vs-upkeep, Pending/Closed meaning, inspection cycle, CDC Salmonella finding, sourced to NYC Health); plus best-effort violation-code categories — `loadViolCodes` pulls NYC Health's keyless CORS-open reference CSV and `violationsHtml` shows a `.viol-cat` label per code, degrading silently if the CSV is unreachable or its schema differs (live `.viol-cat` rendering is unverified from the sandbox — confirm on deploy); tests 43–45b added (45 cases, 161 assertions)
 - v1.18.1 — `viaMicrolink` debug trace now logs the resolved `data.url`/`data.title` (mirrors `viaJina`'s logging), closing a diagnostic gap: a live failure showed microlink returning HTTP 200 with an unusable URL, but the trace couldn't show what Google actually served it
 - v1.19.0 — `?share=` deep link accepts the raw iOS share-sheet payload (name, Maps URL, or Google Maps' "name\naddress\nlink" text blob); `parseShare` extracts name + borough/ZIP, `onShare` searches the name directly (zero resolver calls) and falls back to URL resolution only when the name is missing or finds nothing; `render`/`search` now return the result count to enable the fallback; recommended iOS Shortcut becomes 3 actions (Receive Text/URLs → URL Encode → Open `?share=`); motivated by live resolver failures — Google blocking mapu/microlink/jina's datacenter IPs — that the share text sidesteps entirely; tests 46–47 added (47 cases, 171 assertions)
+- v1.19.1 — `parseShare` rejects `JUNK_TITLE` matches as names, and `JUNK_TITLE` gains "Invalid Dynamic Link": live testing showed Google Maps shares a URL-only payload, and Shortcuts' text coercion fetches the link's page title on-device — for a `g_st`-poisoned short link that's Firebase's error page, so the app was searching DOHMH for "INVALID DYNAMIC LINK"; test 47b added (47 cases, 175 assertions)
 
 ## Known-good Maps parsing baseline
 

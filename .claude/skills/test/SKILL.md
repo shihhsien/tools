@@ -5,7 +5,7 @@ description: Run the full Playwright test suite for nyc-restaurant-grade.html. W
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 47-case Playwright test suite, fix any failures, and confirm 171/171 assertions pass.
+Run the full 47-case Playwright test suite, fix any failures, and confirm 175/175 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `171 tests: 171 passed, 0 failed`
+Expected output ends with: `175 tests: 175 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -287,6 +287,11 @@ renders 0 results.
   mock: `decodeURIComponent(u).includes('MAZZAT') ? [MAZZAT] : []` and a shared `dohmhCalls`
   counter. The Ghostplace search returns `[]`, then the URL fallback resolves to Mazzat which
   finds the row. Assert `dohmhCalls >= 2` and the card shows MAZZAT. Use `timeout: 30000`.
+- **Test 47b (v1.19.1):** payload is the bare text `'Invalid Dynamic Link'` (Firebase error-page
+  title, no URL). `parseShare` rejects `JUNK_TITLE` matches as names, so `onShare` has neither
+  name nor URL → shows the "Couldn't read the shared content" status. Mock `43nn-pn8j` with a
+  hit-flag handler; assert it was never called, `#q` stays `''`, and status includes
+  `Couldn't read`.
 
 ## Step 4 — Iterate
 

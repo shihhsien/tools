@@ -185,7 +185,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.19.0</div>
+<div class="ver">v1.19.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -550,7 +550,7 @@ function nameFromUrl(url) {
 
 // Strip the trailing " - Google Maps" from a page title; reject empty/Google-only/URL/error strings.
 // Firebase serves a "Dynamic Link Not Found" page for dead/expired short links — never a name.
-const JUNK_TITLE = /^(dynamic link not found|page not found|not found|untitled|error|maps)$/i;
+const JUNK_TITLE = /^(dynamic link not found|invalid dynamic link|page not found|not found|untitled|error|maps)$/i;
 function cleanTitle(raw) {
   const name = (raw || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i, '').trim();
   return name.length > 1 && !/^google/i.test(name) && !JUNK_TITLE.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
@@ -595,7 +595,10 @@ function parseShare(text) {
   if (name.includes(',')) ({ name, boro } = splitPlace(name, ''));
   const rest = lines.slice(1).join(', ');
   boro = boro || boroFromAddr(rest) || ((rest.match(/\b\d{5}\b/) || [])[0] || '');
-  return { name: isName(name) ? name : '', boro, url };
+  // Junk filter: iOS coercing a URL-only payload to text can fetch the link's
+  // page title — for a g_st-poisoned short link that's Firebase's error-page
+  // title ("Invalid Dynamic Link"), not a restaurant name.
+  return { name: isName(name) && !JUNK_TITLE.test(name) ? name : '', boro, url };
 }
 
 function timeoutFetch(url, opts, ms = 6000) {
