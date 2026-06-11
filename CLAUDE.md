@@ -550,27 +550,43 @@ async function viaWorker(url) {
 Lets the user tap **Share → NYC Grade** from inside Google Maps and have
 the grade load automatically.
 
-**Recommended (v1.19.0, `?share=` — name-first, resolver-free when possible):**
+**Recommended — proven on-device June 2026 (7 actions, zero third-party resolvers):**
 1. Shortcuts → **+** → name it **NYC Grade**
-2. Tap **ⓘ** → enable **Show in Share Sheet** → **Text AND URLs** checked → Done
-   (Text matters: Google Maps' share payload often carries the restaurant name
-   as text alongside the short link — accepting only URLs throws the name away.)
+2. Tap **ⓘ** → enable **Show in Share Sheet** → **URLs** checked (URLs only) → Done
 3. Actions in order:
-   - **Receive** Text/URLs from Share Sheet (if no input → Ask For Input)
-   - **URL Encode** (input: Shortcut Input)
-   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?share=` + encoded text
+   - **Receive** URLs from Share Sheet
+   - **Text** — content: the Shortcut Input variable (converts the URL item to its
+     URL *string*; see the coercion gotchas below)
+   - **Split Text** — by **Custom**: `?` (strips iOS's `?g_st=…` share-sheet param,
+     which makes Firebase serve its error page instead of redirecting)
+   - **Get Item from List** — **First Item**
+   - **Expand URL** — input: Item from List (follows Google's redirect **on-device**,
+     residential IP; verified working June 2026 — returned a full
+     `google.com/maps?q=NAME` URL, no consent interstitial)
+   - **URL Encode** — input: Expanded URL
+   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?share=` + URL Encoded Text
 
-The app prefers the name in the payload (no resolvers needed) and falls back to
-resolving the short link only when the name is missing or finds nothing.
+The app receives a full Maps URL and parses the name client-side — the
+mapu/microlink/jina resolver race never runs for the Shortcut flow. If Expand
+ever fails, `?share=` still falls back to the resolver pipeline (worst case =
+manual-paste behavior).
+
+**Shortcuts coercion gotchas (hard-won, June 2026):**
+- Google Maps shares a **URL-only payload** — no name text. The v1.19.0 hope that
+  the share text carries the restaurant name is dead for this share path.
+- A shared link is an *object*, not a string. Actions that coerce it to text
+  (URL Encode directly on Shortcut Input, **Get URLs from Input**) make iOS fetch
+  the link's **page title** — for a `g_st`-poisoned short link that's Firebase's
+  "Invalid Dynamic Link" error page. "Get URLs from Input" then finds no URL in
+  that title and outputs an **empty list**, which flows silently to the end
+  (`?share=` arrives empty — Shortcuts never fails loudly). The plain **Text**
+  action is the one conversion observed to yield the URL string itself.
+- If the Receive types get unchecked (e.g. "Maps Links" checked instead of
+  **URLs**), the same title-coercion failure occurs before the first action.
 
 **Older `?q=` version (manual typing fallback):**
 - Receive URLs → **Ask for Input** (`Restaurant name?`) → **URL Encode** →
   **Open URLs** `…?q=` + encoded text.
-
-If short-link resolution keeps failing even via `?share=`, the next on-device
-option is inserting Shortcuts' **Expand URL** action before URL Encode (expands
-the redirect on the phone's residential IP) — untested against Google's consent
-interstitial as of June 2026.
 
 ---
 

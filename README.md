@@ -30,14 +30,21 @@ Paste any Google Maps URL into the blue input field — full URL (`google.com/ma
 `?q=Name&loc=Borough` auto-fills and searches on load — useful for bookmarks or the iOS Shortcut below.
 
 ### iOS Shortcut (reliable Maps integration)
+Expands the short link **on your phone** — no third-party resolver involved.
 1. Shortcuts → **+** → name it **NYC Grade**
-2. Tap **ⓘ** → enable **Show in Share Sheet** → **Text and URLs** checked
-   (Text matters — Google Maps' share payload often includes the restaurant name as text,
-   which lets the app skip short-link resolution entirely)
+2. Tap **ⓘ** → enable **Show in Share Sheet** → **URLs** checked (URLs only)
 3. Actions:
-   - **Receive** Text/URLs from Share Sheet
-   - **URL Encode** (input: Shortcut Input)
-   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?share=` + encoded text
+   - **Receive** URLs from Share Sheet
+   - **Text** (content: Shortcut Input)
+   - **Split Text** by **Custom**: `?`
+   - **Get Item from List** → First Item
+   - **Expand URL** (input: Item from List)
+   - **URL Encode** (input: Expanded URL)
+   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?share=` + URL Encoded Text
+
+(The Text → Split steps matter: iOS appends a `?g_st=…` param that breaks the redirect,
+and converting the link via the plain **Text** action is the only way that reliably yields
+the URL string — other conversions fetch the page *title* instead. See CLAUDE.md for details.)
 
 ### Debug mode
 Append `?debug=1` to see a timestamped trace of every resolver attempt — useful for diagnosing why a Maps link failed.
