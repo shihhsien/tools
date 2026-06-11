@@ -97,9 +97,17 @@ These are separate because an inspection can happen without issuing a new grade.
 `buildUrl`'s `$select` also fetches `phone`, `cuisine_description`, `nta`, `latitude`,
 `longitude` (v1.16.0) — present on `43nn-pn8j` but previously unused. `cardHtml` renders
 these (when non-empty) in a `.meta` line under the address: cuisine type as plain text,
-phone as a `tel:` link formatted via `fmtPhone()` (`(212) 555-1234`), and a "Map ↗" link
-to `maps.google.com/?q=LAT,LNG` when coordinates are present. `nta` (neighborhood) is
-fetched but not yet displayed — reserved for a future enrichment.
+phone as a `tel:` link formatted via `fmtPhone()` (`(212) 555-1234`), and two review
+links (v1.21.0) built from name+address whenever `dba` is present: "Map ↗" →
+`google.com/maps/search/?api=1&query=NAME ADDRESS` (a place search that lands on the
+Google place card with its rating/reviews — replaced the old bare `?q=LAT,LNG`
+coordinate pin, which selected nothing) and "Yelp ↗" →
+`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`. The link-out approach is deliberate:
+Yelp's Fusion API has no free tier (reviews need the paid Plus plan), returns only 3
+truncated excerpts, and blocks browser calls (no CORS) by design — so inline Yelp data
+would need a paid key plus a Worker proxy for 3 snippets. Dataset coordinates are now
+used only for the nearby-search distance math. `nta` (neighborhood) is fetched but not
+yet displayed — reserved for a future enrichment.
 
 ### Maps link resolution
 
@@ -642,7 +650,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (49 cases, 188 assertions — all must pass):**
+**Required test cases (50 cases, 188 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -686,7 +694,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 36b | History hidden for a single inspection | no `.hist-wrap` when only one inspection date |
 | 37 | Closure banner shown when currently closed | `.closure-banner` present; text mentions "Closed by DOHMH" |
 | 37b | Closure banner cleared after a later re-open action | no `.closure-banner` when a re-opened action follows the closure |
-| 38 | Card meta line (cuisine, phone, map link) + `role="status"` | `.meta` text includes cuisine; `.meta a[href^="tel:"]` text is formatted phone; `.meta a[href*="maps.google.com"]` href includes lat/lng; `#status` has `role="status"` |
+| 38 | Card meta line (cuisine, phone, map link) + `role="status"` | `.meta` text includes cuisine; `.meta a[href^="tel:"]` text is formatted phone; `.meta a[href*="google.com/maps/search"]` href (decoded) includes the restaurant name; `#status` has `role="status"` |
 | 39 | viaMicrolink falls back to title for borough when URL has none | mock microlink `data.url` with no borough + `data.title` containing "Brooklyn, NY"; `#loc === 'BROOKLYN'`; card shown with name MAZZAT |
 | 40 | nameFromUrl extracts from `/maps/search/?api=1&query=NAME` | full URL via `triggerMaps`, no resolver call; `#q` filled with MAZZAT; card shown |
 | 41 | stripShortLinkQuery drops tracking query string from short links | short link with `?g_st=...` via `triggerMaps`; captured `mapu` request URL has no `g_st`; card shown |
@@ -703,6 +711,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 48 | Near me — `within_circle` query, sorted nearest first | `#near` clicked; mocked geolocation; query has `within_circle`; 2 cards, nearest first; status mentions radius; card `.meta` shows distance |
 | 48b | Near me falls back to lat/lng bounding box when `within_circle` 400s | `within_circle` attempted first; fallback query has `latitude >`/`latitude <`; card shown via bbox |
 | 49 | Near me — geolocation permission denied | mocked `getCurrentPosition` error code 1; DOHMH never called; error mentions "permission denied" |
+| 50 | Review links (Google place search + Yelp) on card meta | Map link href includes `google.com/maps/search/?api=1`, decoded query has name + street; Yelp link href includes `yelp.com/search`, decoded has `find_desc=` name and street in `find_loc` |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -726,7 +735,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the clean test (test 35): single row with `violation_description:null` → `groupByRestaurant` produces an empty `violations` array → `violationsHtml` returns the `.no-viols` checkmark row, no `.viols` `<details>`.
 - For the history tests (36/36b): `historyHtml` renders only when `history.length >= 2`. Test 36 uses three rows with distinct `inspection_date`s (assert 3 `.hist-row`); test 36b uses a single inspection (assert no `.hist-wrap`).
 - For the closure tests (37/37b): closure is detected by `action.includes('Closed by DOHMH')` and cleared only if a later row's `action` includes `re-opened` (case-insensitive) with a greater `inspection_date`. Test 37 has a lone closure row (assert `.closure-banner` present); test 37b adds a later re-opened row (assert `.closure-banner` absent).
-- For the card meta test (test 38, v1.16.0): mock a row with `cuisine_description:'Japanese'`, `phone:'2125551234'`, `latitude:'40.7580'`, `longitude:'-73.9855'`. Assert `.meta` textContent includes `Japanese`; `.meta a[href^="tel:"]` textContent === `(212) 555-1234` (via `fmtPhone`); `.meta a[href*="maps.google.com"]` href includes `40.7580,-73.9855`; and `#status` `getAttribute('role') === 'status'`.
+- For the card meta test (test 38, v1.16.0, updated v1.21.0): mock a row with `cuisine_description:'Japanese'`, `phone:'2125551234'`. Assert `.meta` textContent includes `Japanese`; `.meta a[href^="tel:"]` textContent === `(212) 555-1234` (via `fmtPhone`); `decodeURIComponent` of `.meta a[href*="google.com/maps/search"]`'s href includes the restaurant name (the v1.21.0 place-search link replaced the old `maps.google.com/?q=LAT,LNG` pin); and `#status` `getAttribute('role') === 'status'`.
 - For the microlink title-borough-fallback test (test 39, v1.16.1): trigger a `maps.app.goo.gl` short link via `triggerMaps`. Mock `mapu.retiolus.net` and `jina.ai` as always-fail (`E`). Mock `microlink.io` to return `{ data: { url: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z', title: 'Mazzat - Brooklyn, NY - Google Maps' } }` — note the `data.url` has no borough (no comma-separated address segment), but `data.title` has "Brooklyn, NY". Mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert `#loc` value `=== 'BROOKLYN'` (proves `boroFromAddr(data.title)` fallback fired since `boroFromAddr(data.url)` finds nothing) and `.name === 'MAZZAT'`.
 - For the `?query=` param test (test 40, v1.16.2): trigger `https://www.google.com/maps/search/?api=1&query=Mazzat&g_st=ic` via `triggerMaps`. Mock only `43nn-pn8j` to `J([MAZZAT])` — no resolver routes should be hit, since `nameFromUrl` resolves `?query=` directly without a network call. Wait for `.card`, then assert `#q` (uppercased) `=== 'MAZZAT'` and `.name === 'MAZZAT'`.
 - For the `stripShortLinkQuery` test (test 41, v1.16.3): trigger `https://maps.app.goo.gl/TEST?g_st=com.apple.shortcuts.Run-Workflow.(null)` via `triggerMaps`. Mock `mapu.retiolus.net` with a function handler that captures the request URL and returns `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6840,-73.9970,17z' })`; mock `microlink.io`/`jina.ai` as always-fail (`E`); mock `43nn-pn8j` to `J([MAZZAT])`. Wait for `.card`, then assert the captured `mapu` URL's `link` param (decoded) does NOT include `g_st`, and `.name === 'MAZZAT'`.
@@ -737,6 +746,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 
 - For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`). Test 47b's payload is the bare text `Invalid Dynamic Link` (a Firebase error-page title — iOS coercing a URL-only share payload to text can fetch the link's page title, and the g_st-poisoned short link serves Firebase's error page). `parseShare` rejects `JUNK_TITLE` matches as names; with no URL either, `onShare` shows the "Couldn't read the shared content" status and never queries DOHMH (mock `43nn-pn8j` with a hit-flag handler and assert it stays false, `#q` stays empty).
 - For the near-me tests (48/48b/49, v1.20.0): mock `navigator.geolocation.getCurrentPosition` via `page.addInitScript` (must run before `goto` on `file://` pages) — e.g. `navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 40.68, longitude: -73.99 } })` for success, or `(ok, err) => err({ code: 1, message: 'denied' })` for test 49. Click `#near` (not `#go`) and `waitForSelector('.card')` or `waitErr`. Test 48: mock `43nn-pn8j` to return two fixtures with `latitude`/`longitude` at different distances from the mocked position; assert the captured `$where` (decoded) includes `within_circle`, the nearer restaurant's card is first, status mentions `within 300`, and `.meta` includes "m away". Test 48b: have the `43nn-pn8j` mock return HTTP 400 when the URL contains `within_circle` and 200 otherwise; assert the bbox fallback fires and its `$where` (after replacing `+` with a space before `decodeURIComponent`, since `+` isn't decoded by `decodeURIComponent`) includes `latitude >`. Test 49: assert DOHMH is never called and the error message mentions "permission denied".
+- For the review-links test (test 50, v1.21.0): plain DOHMH search with `J([MAZZAT])`. Both links are built with `encodeURIComponent` (spaces become `%20`, recovered by `decodeURIComponent` — unlike the `+` from `URLSearchParams` elsewhere). Assert the Map link: `.meta a[href*="google.com/maps/search"]` exists, its href includes `api=1`, and its decoded href includes `MAZZAT` and `MAIN ST` (name + street in the query). Assert the Yelp link: `.meta a[href*="yelp.com/search"]` exists, its decoded href includes `find_desc=MAZZAT` and `MAIN ST` (street in `find_loc`). Both render whenever `dba` is present — no coordinates required.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -821,7 +831,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.20.0**
+Current: **v1.21.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -860,6 +870,7 @@ Notable versions:
 - v1.19.1 — `parseShare` rejects `JUNK_TITLE` matches as names, and `JUNK_TITLE` gains "Invalid Dynamic Link": live testing showed Google Maps shares a URL-only payload, and Shortcuts' text coercion fetches the link's page title on-device — for a `g_st`-poisoned short link that's Firebase's error page, so the app was searching DOHMH for "INVALID DYNAMIC LINK"; test 47b added (47 cases, 175 assertions)
 - v1.19.2 — iOS tip's Install Shortcut button now links the proven 7-action Expand-URL shortcut (icloud.com/shortcuts/15ee0520647c4598a2da68b9d3070e6c), replacing the old 4-action ?maps= version
 - v1.20.0 — "📍 Graded restaurants near me" button (`#near`), fired only on explicit tap (never on load, to avoid the iOS standalone-PWA geolocation-prompt hang); `searchNearby()` queries `43nn-pn8j` via `buildNearbyUrl` using `within_circle(location_point1, …)` with a lat/lng bounding-box fallback if that 400s; results within 300 m sorted nearest-first (capped at 25), each card's `.meta` line shows distance via `fmtDist`/`distM` (Haversine); tests 48–49 added (49 cases, 188 assertions)
+- v1.21.0 — review links on every card: "Map ↗" upgraded from a bare `?q=LAT,LNG` coordinate pin to a `google.com/maps/search/?api=1&query=NAME ADDRESS` place search (lands on the Google place card with rating/reviews), plus a new "Yelp ↗" link (`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`); link-out chosen over inline Yelp data because the Fusion API is paid-only for reviews (Plus plan), returns just 3 truncated excerpts, and blocks browser calls (no CORS) — inline would need a key + Worker proxy; test 38 updated, test 50 added (50 cases, 188 assertions)
 
 ## Known-good Maps parsing baseline
 

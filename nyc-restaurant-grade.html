@@ -187,7 +187,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.20.0</div>
+<div class="ver">v1.21.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -467,7 +467,14 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
   if (dist != null) metaParts.push(htmlEsc(fmtDist(dist)));
   if (info.cuisine_description) metaParts.push(htmlEsc(info.cuisine_description));
   if (info.phone) metaParts.push('<a href="tel:+1' + htmlEsc(String(info.phone).replace(/\D/g, '')) + '">' + htmlEsc(fmtPhone(info.phone)) + '</a>');
-  if (info.latitude && info.longitude) metaParts.push('<a href="https://maps.google.com/?q=' + htmlEsc(info.latitude) + ',' + htmlEsc(info.longitude) + '" target="_blank" rel="noopener">Map ↗</a>');
+  // Review links: a name+address place search lands on the Google place card
+  // (rating + reviews), unlike the old bare lat/lng pin; Yelp's search URL is the
+  // keyless route to its reviews (the Fusion API is paid and blocks browser calls).
+  if (info.dba) {
+    const locStr = ((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' NY ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim();
+    metaParts.push('<a href="' + htmlEsc('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(info.dba + ' ' + locStr)) + '" target="_blank" rel="noopener">Map ↗</a>');
+    metaParts.push('<a href="' + htmlEsc('https://www.yelp.com/search?find_desc=' + encodeURIComponent(info.dba) + '&find_loc=' + encodeURIComponent(locStr)) + '" target="_blank" rel="noopener">Yelp ↗</a>');
+  }
   const meta = metaParts.length ? '<div class="meta">' + metaParts.join(' \xb7 ') + '</div>' : '';
   return '<div class="card">'
     + closureBannerHtml(latestClosure, currentlyClosed)

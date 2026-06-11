@@ -12,6 +12,7 @@ Look up a restaurant's NYC Health Department inspection grade by name or Google 
 - Paste a Google Maps link — full URL or short link — and the app extracts the name and searches automatically.
 - If the exact name returns no results, the app retries with one fewer word until it finds a match (solves the common Maps vs. DOHMH naming mismatch, e.g. "Oita Sushi" → "Oita").
 - Tap **📍 Graded restaurants near me** to find graded restaurants within 300 m of your current location, sorted nearest first with distance shown on each card.
+- Each card links out to the restaurant's reviews: **Map ↗** opens the Google Maps place card (rating + reviews) and **Yelp ↗** opens its Yelp search result.
 
 Data is live from [NYC Open Data](https://data.cityofnewyork.us/resource/43nn-pn8j.json). No login, no tracking, no server.
 
@@ -67,11 +68,11 @@ git push origin main
 Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`):
 
 ```bash
-# Write + run the 49-case suite (see CLAUDE.md §Testing for the full harness)
+# Write + run the 50-case suite (see CLAUDE.md §Testing for the full harness)
 node test.mjs
 ```
 
-49 cases, 188 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=`, `?maps=` — encoded and unencoded — and the v1.19.0 `?share=` payload handler with name-first search and URL fallback), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner), the v1.16.0 card meta line (cuisine, phone, map link) + `role="status"`, the v1.16.1 microlink title-borough fallback, the v1.16.2 `?query=` Maps-link name extraction, the v1.16.3 short-link tracking-query stripping, the v1.17.0 splitPlace ZIP fallback, the v1.18.0 grade-context line, "about grades" panel, and violation-code categories, and the v1.20.0 "near me" geolocation search (within_circle query, bounding-box fallback, permission-denied handling).
+50 cases, 188 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=`, `?maps=` — encoded and unencoded — and the v1.19.0 `?share=` payload handler with name-first search and URL fallback), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner), the v1.16.0 card meta line (cuisine, phone, map link) + `role="status"`, the v1.16.1 microlink title-borough fallback, the v1.16.2 `?query=` Maps-link name extraction, the v1.16.3 short-link tracking-query stripping, the v1.17.0 splitPlace ZIP fallback, the v1.18.0 grade-context line, "about grades" panel, and violation-code categories, the v1.20.0 "near me" geolocation search (within_circle query, bounding-box fallback, permission-denied handling), and the v1.21.0 review links (Google place-search Map link + Yelp link).
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
 
