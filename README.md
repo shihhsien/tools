@@ -31,12 +31,13 @@ Paste any Google Maps URL into the blue input field — full URL (`google.com/ma
 
 ### iOS Shortcut (reliable Maps integration)
 1. Shortcuts → **+** → name it **NYC Grade**
-2. Tap **ⓘ** → enable **Show in Share Sheet** → URLs checked
+2. Tap **ⓘ** → enable **Show in Share Sheet** → **Text and URLs** checked
+   (Text matters — Google Maps' share payload often includes the restaurant name as text,
+   which lets the app skip short-link resolution entirely)
 3. Actions:
-   - **Receive** URLs from Share Sheet
-   - **Ask for Input** — prompt: `Restaurant name?`
-   - **URL Encode** the input
-   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?q=` + encoded text
+   - **Receive** Text/URLs from Share Sheet
+   - **URL Encode** (input: Shortcut Input)
+   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?share=` + encoded text
 
 ### Debug mode
 Append `?debug=1` to see a timestamped trace of every resolver attempt — useful for diagnosing why a Maps link failed.
@@ -58,11 +59,11 @@ git push origin main
 Tests use Playwright (pre-installed at `/opt/node22/lib/node_modules/playwright`):
 
 ```bash
-# Write + run the 45-case suite (see CLAUDE.md §Testing for the full harness)
+# Write + run the 47-case suite (see CLAUDE.md §Testing for the full harness)
 node test.mjs
 ```
 
-45 cases, 161 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=` and `?maps=` — encoded and unencoded), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner), the v1.16.0 card meta line (cuisine, phone, map link) + `role="status"`, the v1.16.1 microlink title-borough fallback, the v1.16.2 `?query=` Maps-link name extraction, the v1.16.3 short-link tracking-query stripping, the v1.17.0 splitPlace ZIP fallback, and the v1.18.0 grade-context line, "about grades" panel, and violation-code categories.
+47 cases, 171 assertions covering: search, apostrophe/smart-quote/prime normalization, all three Maps resolver paths, coordinate rejection, auto-retry (mapu/microlink/jina), deep links (`?q=`, `?maps=` — encoded and unencoded — and the v1.19.0 `?share=` payload handler with name-first search and URL fallback), borough extraction, ZIP stripping from place names, progressive word-drop fallback, Firebase junk-title rejection, XSS escaping of API data, multi-result status count, iOS Shortcut tip visibility/dismiss, the v1.15.0 card panels (score bar, violation chips, history timeline, closure banner), the v1.16.0 card meta line (cuisine, phone, map link) + `role="status"`, the v1.16.1 microlink title-borough fallback, the v1.16.2 `?query=` Maps-link name extraction, the v1.16.3 short-link tracking-query stripping, the v1.17.0 splitPlace ZIP fallback, and the v1.18.0 grade-context line, "about grades" panel, and violation-code categories.
 
 After any change, bump the version string in `<div class="ver">vX.Y.Z</div>` near the bottom of the HTML.
 

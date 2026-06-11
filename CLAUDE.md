@@ -54,7 +54,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (45 cases, 161 assertions)
+- `.claude/skills/test/` — Playwright test skill (47 cases, 171 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
 
@@ -196,6 +196,23 @@ without re-encoding — Shortcuts can pass an unencoded Maps URL without a URL
 Encode action. The app then runs `onMapsLink()` on the value, following the same
 resolver path (mapu → microlink → jina, with auto-retry) as manual paste.
 
+`?share=PAYLOAD` (v1.19.0) accepts the **raw iOS share-sheet payload** — a bare
+name, a bare Maps URL, or Google Maps' share text blob
+(`"Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/x"`).
+Read raw like `?maps=` (`location.search.startsWith('?share=')` + `.slice(7)` +
+best-effort `decodeURIComponent`). `parseShare(text)` extracts the first Maps URL
+(via `MAPS_HOSTS`), takes the first non-URL line as the name (stripping "Check
+out " / " - Google Maps" decorations, splitting on comma via `splitPlace`), and
+mines the remaining lines for a borough (`boroFromAddr`) or 5-digit ZIP to
+prefill `#loc`. `onShare()` then **prefers the name** — searching DOHMH directly
+with zero resolver calls — and falls back to `onMapsLink(url)` only when the
+payload had no usable name **or** the name search rendered 0 results (`render`/
+`search` return the group count to make this detectable). This exists because
+Google blocks the third-party resolvers' datacenter IPs inconsistently; when the
+share text carries the name, the hostile short link never needs to be expanded
+at all. Used by the 3-action iOS Shortcut: **Receive Text/URLs from Share Sheet
+→ URL Encode → Open URL** with `?share=` + encoded input.
+
 ---
 
 ## Address extraction from resolved Maps links (research note)
@@ -318,8 +335,8 @@ The `<script>` is organised into labelled sections:
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
 | Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
 | Search | `search` |
-| Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
-| Wiring | `onMapsLink` (with auto-retry), event listeners, deep-link init on load |
+| Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
+| Wiring | `onMapsLink` (with auto-retry), `onShare` (name-first share-payload handler), event listeners, deep-link init on load |
 
 ---
 
@@ -531,19 +548,29 @@ async function viaWorker(url) {
 ## iOS Shortcut recipe
 
 Lets the user tap **Share → NYC Grade** from inside Google Maps and have
-the grade load automatically. Resolves the short link on-device (real browser
-session), bypassing Google's bot block entirely.
+the grade load automatically.
 
-**Simple version (always works):**
+**Recommended (v1.19.0, `?share=` — name-first, resolver-free when possible):**
 1. Shortcuts → **+** → name it **NYC Grade**
-2. Tap **ⓘ** → enable **Show in Share Sheet** → URLs checked → Done
+2. Tap **ⓘ** → enable **Show in Share Sheet** → **Text AND URLs** checked → Done
+   (Text matters: Google Maps' share payload often carries the restaurant name
+   as text alongside the short link — accepting only URLs throws the name away.)
 3. Actions in order:
-   - **Receive** URLs from Share Sheet (if no input → Ask For Input)
-   - **Ask for Input** — Prompt: `Restaurant name?` (pre-fill with Shortcut Input)
-   - **URL Encode** the input
-   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?q=` + encoded text
+   - **Receive** Text/URLs from Share Sheet (if no input → Ask For Input)
+   - **URL Encode** (input: Shortcut Input)
+   - **Open URLs** → `https://shihhsien.github.io/tools/nyc-restaurant-grade.html?share=` + encoded text
 
-The `?q=` deep-link auto-fills the name field and fires the search on load.
+The app prefers the name in the payload (no resolvers needed) and falls back to
+resolving the short link only when the name is missing or finds nothing.
+
+**Older `?q=` version (manual typing fallback):**
+- Receive URLs → **Ask for Input** (`Restaurant name?`) → **URL Encode** →
+  **Open URLs** `…?q=` + encoded text.
+
+If short-link resolution keeps failing even via `?share=`, the next on-device
+option is inserting Shortcuts' **Expand URL** action before URL Encode (expands
+the redirect on the phone's residential IP) — untested against Google's consent
+interstitial as of June 2026.
 
 ---
 
@@ -571,7 +598,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (45 cases, 161 assertions — all must pass):**
+**Required test cases (47 cases, 171 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -625,6 +652,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 44b | Pending context line when no letter grade | row with `grade:null` → `.grade-ctx` present; text mentions "re-inspected" |
 | 45 | Violation category label from reference CSV | mock `raw.githubusercontent.com` CSV; violation `04L` → `.viol-cat` text === "Vermin / Pests" |
 | 45b | Violation category degrades gracefully when CSV unavailable | mock CSV → `E`; `.viol-item` still renders; no `.viol-cat` |
+| 46 | `?share=` blob with name+address+link — direct search, no resolvers | resolver routes never hit; `#q` = name; `#loc` = borough from address line; card shown |
+| 46b | `?share=` bare short link falls back to resolver pipeline | payload is only a short link; mock mapu → card shown |
+| 47 | `?share=` name search finds nothing → falls back to URL resolution | name "Ghostplace" returns `[]`, then resolved URL's name returns a row; ≥2 DOHMH calls; card shown |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -656,6 +686,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the about-grades panel test (test 43, v1.18.0): static — `setupRoute(p, [])`, no search. Assert `#about` present, `el.open === false`, and its `textContent` includes `0–13` (use an en dash, not a hyphen — it must match the HTML) and `lower is better`, and mentions both `Grade Pending` and `Closed by DOHMH`.
 - For the grade-context tests (tests 44/44b, v1.18.0): plain DOHMH search. Test 44: `J([MAZZAT])` (grade A) → `.grade-ctx` present, text includes `9 in 10`. Test 44b: a row with `grade:null, grade_date:null` → `.grade-ctx` present, text includes `re-inspected` (the `PENDING_CONTEXT` string).
 - For the violation-category tests (tests 45/45b, v1.18.0): test 45 mocks `raw.githubusercontent.com` → `TX(csv)` where `csv` is a header line `Violation_Code,Health_Code,Violation_Summary,Category_Description` plus a row `04L,§81.11,Live mice present,Vermin / Pests`, and `43nn-pn8j` with a row whose `violation_code:'04L'` + a `violation_description`. Wait for `.card`, assert `.viol-cat` present and text `=== 'Vermin / Pests'`. Test 45b mocks `raw.githubusercontent.com` → `E`; assert the `.viol-item` still renders and `.viol-cat` is absent (graceful degradation). **All other tests leave `raw.githubusercontent.com` unmocked** — `setupRoute` aborts it, `loadViolCodes` swallows the failure → `{}` → no `.viol-cat` and no `pageerror`, so the existing cases are unaffected.
+
+- For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`).
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -740,7 +772,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.18.1**
+Current: **v1.19.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -775,6 +807,7 @@ Notable versions:
 - v1.17.0 — `splitPlace` now falls back to a 5-digit ZIP mined from the address when no borough name is found, prefilling `#loc` with the ZIP (accepted by `buildUrl`'s `zipcode='${loc}'` clause); test 42 added (42 cases, 145 assertions)
 - v1.18.0 — interpretive context: a per-card `.grade-ctx` line (plain-English meaning of A/B/C, or a pending explainer) and a static collapsible "What do these grades mean?" panel (scoring, critical-vs-upkeep, Pending/Closed meaning, inspection cycle, CDC Salmonella finding, sourced to NYC Health); plus best-effort violation-code categories — `loadViolCodes` pulls NYC Health's keyless CORS-open reference CSV and `violationsHtml` shows a `.viol-cat` label per code, degrading silently if the CSV is unreachable or its schema differs (live `.viol-cat` rendering is unverified from the sandbox — confirm on deploy); tests 43–45b added (45 cases, 161 assertions)
 - v1.18.1 — `viaMicrolink` debug trace now logs the resolved `data.url`/`data.title` (mirrors `viaJina`'s logging), closing a diagnostic gap: a live failure showed microlink returning HTTP 200 with an unusable URL, but the trace couldn't show what Google actually served it
+- v1.19.0 — `?share=` deep link accepts the raw iOS share-sheet payload (name, Maps URL, or Google Maps' "name\naddress\nlink" text blob); `parseShare` extracts name + borough/ZIP, `onShare` searches the name directly (zero resolver calls) and falls back to URL resolution only when the name is missing or finds nothing; `render`/`search` now return the result count to enable the fallback; recommended iOS Shortcut becomes 3 actions (Receive Text/URLs → URL Encode → Open `?share=`); motivated by live resolver failures — Google blocking mapu/microlink/jina's datacenter IPs — that the share text sidesteps entirely; tests 46–47 added (47 cases, 171 assertions)
 
 ## Known-good Maps parsing baseline
 

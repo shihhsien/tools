@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 45 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 47 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 45-case Playwright test suite, fix any failures, and confirm 161/161 assertions pass.
+Run the full 47-case Playwright test suite, fix any failures, and confirm 171/171 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 45 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 47 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `161 tests: 161 passed, 0 failed`
+Expected output ends with: `171 tests: 171 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -271,6 +271,22 @@ Wait for `.card`, assert `.viol-cat` present and its text `=== 'Vermin / Pests'`
 `raw.githubusercontent.com` → `E` (fetch fails); assert the `.viol-item` still renders and `.viol-cat`
 is absent (graceful degradation). All other tests leave `raw.githubusercontent.com` unmocked, so
 `setupRoute` aborts it → `loadViolCodes` swallows the error → `{}` → no `.viol-cat` (and no JS error).
+
+### ?share= deep-link tests (tests 46, 46b, 47, v1.19.0)
+All three pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in
+`setup` so load-time handling is captured. `onShare` prefers the name in the payload (direct
+DOHMH search, no resolvers) and falls back to `onMapsLink` when the name is absent or its search
+renders 0 results.
+- **Test 46:** payload `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'`.
+  Mock the three resolvers with hit-flag handlers and `43nn-pn8j` → `J([MAZZAT])`. Assert no
+  resolver was hit, `#q` (uppercased) `=== 'MAZZAT'`, `#loc === 'BROOKLYN'` (mined from the
+  address line), and the card renders.
+- **Test 46b:** payload is the bare short link. `parseShare` finds no name → `onMapsLink` path.
+  Mock mapu → `J({ full_link: '…/maps/place/Mazzat/@…' })`, microlink/jina → `E`. Assert card.
+- **Test 47:** payload `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH
+  mock: `decodeURIComponent(u).includes('MAZZAT') ? [MAZZAT] : []` and a shared `dohmhCalls`
+  counter. The Ghostplace search returns `[]`, then the URL fallback resolves to Mazzat which
+  finds the row. Assert `dohmhCalls >= 2` and the card shows MAZZAT. Use `timeout: 30000`.
 
 ## Step 4 — Iterate
 
