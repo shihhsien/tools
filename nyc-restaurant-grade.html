@@ -42,6 +42,7 @@
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
+  .btn-near { margin-top: 8px; padding: 12px 18px; font-size: 15px; background: var(--card); color: var(--text); border: 1px solid var(--line); }
   .status { font-size: 13px; color: var(--muted); margin: 14px 2px; }
   .status.err { color: #f87171; }
   .muted { color: var(--muted); }
@@ -167,6 +168,7 @@
 </div>
 
 <button id="go">Look up grade</button>
+<button id="near" class="btn-near">&#128205; Graded restaurants near me</button>
 <div id="status" class="status" role="status"></div>
 <div id="results"></div>
 
@@ -185,7 +187,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.19.2</div>
+<div class="ver">v1.20.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -203,6 +205,7 @@ const mapsInput = document.getElementById('maps-input');
 const statusEl  = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const btn       = document.getElementById('go');
+const nearBtn   = document.getElementById('near');
 const DEBUG   = new URLSearchParams(location.search).has('debug');
 const debugEl = document.getElementById('debug-log');
 if (DEBUG) debugEl.style.display = 'block';
@@ -233,7 +236,21 @@ function fmtPhone(p) {
   return digits;
 }
 
+function fmtDist(m) {
+  return m < 975 ? `${Math.round(m)} m away` : `${(m / 1000).toFixed(1)} km away`;
+}
+
+// Haversine distance in meters.
+function distM(lat1, lon1, lat2, lon2) {
+  const toR = d => d * Math.PI / 180;
+  const a = Math.sin(toR(lat2 - lat1) / 2) ** 2
+    + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(toR(lon2 - lon1) / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(a));
+}
+
 // ---- NYC DOHMH API ----------------------------------------------------
+const SELECT_FIELDS = 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,violation_code,critical_flag,action,phone,cuisine_description,nta,latitude,longitude';
+
 function buildUrl(name, loc) {
   let where = `upper(dba) like '%${name}%'`;
   if (loc) {
@@ -241,10 +258,31 @@ function buildUrl(name, loc) {
     where += ` and (upper(street) like '%${L}%' or upper(boro) like '%${L}%' or zipcode='${loc}')`;
   }
   const params = new URLSearchParams({
-    $select: 'camis,dba,building,street,boro,zipcode,grade,score,grade_date,inspection_date,inspection_type,violation_description,violation_code,critical_flag,action,phone,cuisine_description,nta,latitude,longitude',
+    $select: SELECT_FIELDS,
     $where: where,
     $order: 'inspection_date DESC',
     $limit: '200',
+  });
+  return `${API}?${params}`;
+}
+
+// Nearby search. Primary: Socrata within_circle() on the dataset's Point column
+// (location_point1 — name from research, unverified live; a 400 falls back to a
+// numeric lat/lng bounding box, corner overshoot trimmed client-side by distM).
+const NEAR_RADIUS = 300; // meters — about a 4-minute walk
+const NEAR_MAX = 25;     // cards shown, nearest first
+
+function buildNearbyUrl(lat, lng, bbox) {
+  const dLat = NEAR_RADIUS / 111320;
+  const dLng = NEAR_RADIUS / (111320 * Math.cos(lat * Math.PI / 180));
+  const where = bbox
+    ? `latitude > ${lat - dLat} and latitude < ${lat + dLat} and longitude > ${lng - dLng} and longitude < ${lng + dLng}`
+    : `within_circle(location_point1, ${lat}, ${lng}, ${NEAR_RADIUS})`;
+  const params = new URLSearchParams({
+    $select: SELECT_FIELDS,
+    $where: where,
+    $order: 'inspection_date DESC',
+    $limit: '2000',
   });
   return `${API}?${params}`;
 }
@@ -417,7 +455,7 @@ function closureBannerHtml(latestClosure, currentlyClosed) {
   return '<div class="closure-banner">⚠ Closed by DOHMH \xb7 ' + fmtDate(latestClosure.inspection_date) + '</div>';
 }
 
-function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed }) {
+function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, dist }) {
   const grade = graded ? graded.grade : null;
   const addr = htmlEsc(((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim());
   const gradeLine = graded
@@ -426,6 +464,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
   const ctx = graded ? gradeContextHtml(grade) : '<div class="grade-ctx">' + PENDING_CONTEXT + '</div>';
   const scoreBar = scoreBarHtml(graded ? graded.score : latest.score, grade);
   const metaParts = [];
+  if (dist != null) metaParts.push(htmlEsc(fmtDist(dist)));
   if (info.cuisine_description) metaParts.push(htmlEsc(info.cuisine_description));
   if (info.phone) metaParts.push('<a href="tel:+1' + htmlEsc(String(info.phone).replace(/\D/g, '')) + '">' + htmlEsc(fmtPhone(info.phone)) + '</a>');
   if (info.latitude && info.longitude) metaParts.push('<a href="https://maps.google.com/?q=' + htmlEsc(info.latitude) + ',' + htmlEsc(info.longitude) + '" target="_blank" rel="noopener">Map ↗</a>');
@@ -516,6 +555,55 @@ async function search() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ---- Nearby search ------------------------------------------------------
+// Fired only by an explicit tap on #near — never on load. iOS home-screen web
+// apps can hang forever on the geolocation prompt (it never appears), so the
+// tap gate plus the 10 s timeout below are load-bearing, not just politeness.
+async function searchNearby() {
+  if (!navigator.geolocation) return setError('Location is not supported by this browser.');
+  nearBtn.disabled = true; btn.disabled = true;
+  setStatus('Getting your location…');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    dbg(`nearby: ${lat.toFixed(5)},${lng.toFixed(5)}`);
+    setStatus('Finding graded restaurants near you…');
+    try {
+      violCodeMap = await loadViolCodes();
+      let rows;
+      try {
+        rows = await getJSON(buildNearbyUrl(lat, lng, false));
+      } catch (e) {
+        dbg('within_circle failed — falling back to lat/lng bounding box');
+        rows = await getJSON(buildNearbyUrl(lat, lng, true));
+      }
+      const groups = groupByRestaurant(rows)
+        .filter(g => g.info.latitude && g.info.longitude)
+        .map(g => { g.dist = distM(lat, lng, +g.info.latitude, +g.info.longitude); return g; })
+        .filter(g => g.dist <= NEAR_RADIUS)
+        .sort((a, b) => a.dist - b.dist);
+      dbg(`nearby: ${rows.length} rows -> ${groups.length} restaurants in radius`);
+      if (!groups.length) {
+        resultsEl.innerHTML = '';
+        setStatus(`No restaurants with inspection records found within ${NEAR_RADIUS} m.`);
+        return;
+      }
+      const extra = groups.length > NEAR_MAX ? ` · showing nearest ${NEAR_MAX}` : '';
+      setStatus(`${groups.length} restaurant(s) within ${NEAR_RADIUS} m · nearest first${extra}`);
+      resultsEl.innerHTML = groups.slice(0, NEAR_MAX).map(cardHtml).join('');
+    } catch (e) {
+      setError(`Couldn't load nearby restaurants (${htmlEsc(e.message)}).`);
+    } finally {
+      nearBtn.disabled = false; btn.disabled = false;
+    }
+  }, err => {
+    nearBtn.disabled = false; btn.disabled = false;
+    dbg(`nearby: geolocation error code ${err.code}`);
+    setError(err.code === 1
+      ? 'Location permission denied. Allow location access for this site and try again.'
+      : "Couldn't get your location. If you're using the home-screen app, try opening the site in Safari instead.");
+  }, { timeout: 10000, maximumAge: 60000 });
 }
 
 // ---- Google Maps link → restaurant name -------------------------------
@@ -715,6 +803,7 @@ async function onShare(raw) {
 }
 
 btn.addEventListener('click', search);
+nearBtn.addEventListener('click', searchNearby);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
 mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });

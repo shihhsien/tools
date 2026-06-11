@@ -213,6 +213,34 @@ share text carries the name, the hostile short link never needs to be expanded
 at all. Used by the 3-action iOS Shortcut: **Receive Text/URLs from Share Sheet
 → URL Encode → Open URL** with `?share=` + encoded input.
 
+### Nearby search (v1.20.0)
+
+The **📍 Graded restaurants near me** button (`#near`) calls `searchNearby()`,
+which is fired **only on an explicit tap — never on page load**. iOS
+home-screen web apps can hang forever on the geolocation permission prompt in
+`display: standalone` mode (it never appears), so the tap gate plus a 10 s
+`getCurrentPosition` timeout are load-bearing, not just UX politeness.
+
+On success, `buildNearbyUrl(lat, lng, bbox)` queries `43nn-pn8j` with the same
+`SELECT_FIELDS` as `buildUrl`. Two query strategies:
+
+1. **Primary** — `within_circle(location_point1, lat, lng, NEAR_RADIUS)`
+   (Socrata's geo-filter on the dataset's Point column; `location_point1` is
+   the hypothesized column name, unverified from the sandbox).
+2. **Fallback** — if the primary query 400s, retry with a plain lat/lng
+   bounding box (`latitude > … and latitude < … and longitude > … and longitude < …`),
+   which works on the separate numeric `latitude`/`longitude` fields regardless
+   of whether `location_point1` exists.
+
+`NEAR_RADIUS` = 300 m (~4-minute walk), `NEAR_MAX` = 25 cards. Results are
+grouped via `groupByRestaurant`, filtered to rows with coordinates, distance is
+computed client-side via `distM()` (Haversine), filtered to `dist <= NEAR_RADIUS`,
+and sorted nearest-first. `cardHtml` accepts a `dist` field and `fmtDist()`
+renders it as the first item in the `.meta` line (`"120 m away"` or `"1.2 km
+away"`). Geolocation errors are surfaced via `setError`: permission-denied
+(`code === 1`) gets a specific message; other errors (including timeout)
+suggest opening the site in Safari instead of the home-screen app.
+
 ---
 
 ## Address extraction from resolved Maps links (research note)
@@ -330,11 +358,11 @@ The `<script>` is organised into labelled sections:
 | Section | Key functions |
 |---|---|
 | Config & DOM | constants, cached element refs |
-| Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone` |
-| NYC DOHMH API | `buildUrl`, `getJSON` (with corsproxy.io fallback) |
+| Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone`, `fmtDist`, `distM` |
+| NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (with corsproxy.io fallback) |
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
 | Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
-| Search | `search` |
+| Search | `search`, `searchNearby` |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Wiring | `onMapsLink` (with auto-retry), `onShare` (name-first share-payload handler), event listeners, deep-link init on load |
 
@@ -614,7 +642,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (47 cases, 175 assertions — all must pass):**
+**Required test cases (49 cases, 188 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -672,6 +700,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 46b | `?share=` bare short link falls back to resolver pipeline | payload is only a short link; mock mapu → card shown |
 | 47 | `?share=` name search finds nothing → falls back to URL resolution | name "Ghostplace" returns `[]`, then resolved URL's name returns a row; ≥2 DOHMH calls; card shown |
 | 47b | `?share=` junk page title rejected, no search fired | payload `Invalid Dynamic Link` (no URL); DOHMH never called; `#q` stays empty; status shows "Couldn't read" |
+| 48 | Near me — `within_circle` query, sorted nearest first | `#near` clicked; mocked geolocation; query has `within_circle`; 2 cards, nearest first; status mentions radius; card `.meta` shows distance |
+| 48b | Near me falls back to lat/lng bounding box when `within_circle` 400s | `within_circle` attempted first; fallback query has `latitude >`/`latitude <`; card shown via bbox |
+| 49 | Near me — geolocation permission denied | mocked `getCurrentPosition` error code 1; DOHMH never called; error mentions "permission denied" |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -705,6 +736,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the violation-category tests (tests 45/45b, v1.18.0): test 45 mocks `raw.githubusercontent.com` → `TX(csv)` where `csv` is a header line `Violation_Code,Health_Code,Violation_Summary,Category_Description` plus a row `04L,§81.11,Live mice present,Vermin / Pests`, and `43nn-pn8j` with a row whose `violation_code:'04L'` + a `violation_description`. Wait for `.card`, assert `.viol-cat` present and text `=== 'Vermin / Pests'`. Test 45b mocks `raw.githubusercontent.com` → `E`; assert the `.viol-item` still renders and `.viol-cat` is absent (graceful degradation). **All other tests leave `raw.githubusercontent.com` unmocked** — `setupRoute` aborts it, `loadViolCodes` swallows the failure → `{}` → no `.viol-cat` and no `pageerror`, so the existing cases are unaffected.
 
 - For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`). Test 47b's payload is the bare text `Invalid Dynamic Link` (a Firebase error-page title — iOS coercing a URL-only share payload to text can fetch the link's page title, and the g_st-poisoned short link serves Firebase's error page). `parseShare` rejects `JUNK_TITLE` matches as names; with no URL either, `onShare` shows the "Couldn't read the shared content" status and never queries DOHMH (mock `43nn-pn8j` with a hit-flag handler and assert it stays false, `#q` stays empty).
+- For the near-me tests (48/48b/49, v1.20.0): mock `navigator.geolocation.getCurrentPosition` via `page.addInitScript` (must run before `goto` on `file://` pages) — e.g. `navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 40.68, longitude: -73.99 } })` for success, or `(ok, err) => err({ code: 1, message: 'denied' })` for test 49. Click `#near` (not `#go`) and `waitForSelector('.card')` or `waitErr`. Test 48: mock `43nn-pn8j` to return two fixtures with `latitude`/`longitude` at different distances from the mocked position; assert the captured `$where` (decoded) includes `within_circle`, the nearer restaurant's card is first, status mentions `within 300`, and `.meta` includes "m away". Test 48b: have the `43nn-pn8j` mock return HTTP 400 when the URL contains `within_circle` and 200 otherwise; assert the bbox fallback fires and its `$where` (after replacing `+` with a space before `decodeURIComponent`, since `+` isn't decoded by `decodeURIComponent`) includes `latitude >`. Test 49: assert DOHMH is never called and the error message mentions "permission denied".
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -789,7 +821,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.19.2**
+Current: **v1.20.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -827,6 +859,7 @@ Notable versions:
 - v1.19.0 — `?share=` deep link accepts the raw iOS share-sheet payload (name, Maps URL, or Google Maps' "name\naddress\nlink" text blob); `parseShare` extracts name + borough/ZIP, `onShare` searches the name directly (zero resolver calls) and falls back to URL resolution only when the name is missing or finds nothing; `render`/`search` now return the result count to enable the fallback; recommended iOS Shortcut becomes 3 actions (Receive Text/URLs → URL Encode → Open `?share=`); motivated by live resolver failures — Google blocking mapu/microlink/jina's datacenter IPs — that the share text sidesteps entirely; tests 46–47 added (47 cases, 171 assertions)
 - v1.19.1 — `parseShare` rejects `JUNK_TITLE` matches as names, and `JUNK_TITLE` gains "Invalid Dynamic Link": live testing showed Google Maps shares a URL-only payload, and Shortcuts' text coercion fetches the link's page title on-device — for a `g_st`-poisoned short link that's Firebase's error page, so the app was searching DOHMH for "INVALID DYNAMIC LINK"; test 47b added (47 cases, 175 assertions)
 - v1.19.2 — iOS tip's Install Shortcut button now links the proven 7-action Expand-URL shortcut (icloud.com/shortcuts/15ee0520647c4598a2da68b9d3070e6c), replacing the old 4-action ?maps= version
+- v1.20.0 — "📍 Graded restaurants near me" button (`#near`), fired only on explicit tap (never on load, to avoid the iOS standalone-PWA geolocation-prompt hang); `searchNearby()` queries `43nn-pn8j` via `buildNearbyUrl` using `within_circle(location_point1, …)` with a lat/lng bounding-box fallback if that 400s; results within 300 m sorted nearest-first (capped at 25), each card's `.meta` line shows distance via `fmtDist`/`distM` (Haversine); tests 48–49 added (49 cases, 188 assertions)
 
 ## Known-good Maps parsing baseline
 

@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 47 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 49 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 47-case Playwright test suite, fix any failures, and confirm 175/175 assertions pass.
+Run the full 49-case Playwright test suite, fix any failures, and confirm 188/188 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 47 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 49 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `175 tests: 175 passed, 0 failed`
+Expected output ends with: `188 tests: 188 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -292,6 +292,28 @@ renders 0 results.
   name nor URL → shows the "Couldn't read the shared content" status. Mock `43nn-pn8j` with a
   hit-flag handler; assert it was never called, `#q` stays `''`, and status includes
   `Couldn't read`.
+
+### Near-me tests (48, 48b, 49, v1.20.0)
+These click `#near` (not `#go`/`#q`) and mock `navigator.geolocation.getCurrentPosition` via
+`page.addInitScript` — must be registered before `goto` since `page.evaluate` before `goto`
+throws `SecurityError` on `file://` pages.
+- **Test 48:** `addInitScript(() => { navigator.geolocation.getCurrentPosition = ok =>
+  ok({ coords: { latitude: 40.68, longitude: -73.99 } }); })`. Mock `43nn-pn8j` with a
+  function handler that captures the URL and returns two fixtures with `latitude`/`longitude`
+  at different distances from `(40.68, -73.99)` (one nearer, one farther). Click `#near`,
+  `waitForSelector('.card', { timeout: 15000 })`. Assert the captured `$where` (decoded)
+  includes `within_circle`, two `.card`s render with the nearer restaurant first, `#status`
+  text includes `within 300`, and the first card's `.meta` includes `m away`.
+- **Test 48b:** same geolocation mock. Mock `43nn-pn8j` with a handler that returns HTTP 400
+  when the URL contains `within_circle` (track a `wcCalls` counter) and 200 with one fixture
+  otherwise (capture that URL as `bboxUrl`). Click `#near`, wait for `.card` with
+  `timeout: 20000` (two round trips). Assert `wcCalls >= 1`, and
+  `decodeURIComponent(bboxUrl.replace(/\+/g, ' ')).includes('latitude >')` — note `+` (space)
+  must be replaced before `decodeURIComponent`, which does not decode `+`.
+- **Test 49:** `addInitScript(() => { navigator.geolocation.getCurrentPosition = (ok, err) =>
+  err({ code: 1, message: 'denied' }); })`. Mock `43nn-pn8j` with a hit-flag handler that
+  aborts. Click `#near`, `waitErr(p)`. Assert the hit-flag stayed false and `#status` text
+  includes `permission denied`.
 
 ## Step 4 — Iterate
 
