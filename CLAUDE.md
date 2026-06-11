@@ -789,7 +789,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.19.1**
+Current: **v1.19.2**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -826,6 +826,7 @@ Notable versions:
 - v1.18.1 — `viaMicrolink` debug trace now logs the resolved `data.url`/`data.title` (mirrors `viaJina`'s logging), closing a diagnostic gap: a live failure showed microlink returning HTTP 200 with an unusable URL, but the trace couldn't show what Google actually served it
 - v1.19.0 — `?share=` deep link accepts the raw iOS share-sheet payload (name, Maps URL, or Google Maps' "name\naddress\nlink" text blob); `parseShare` extracts name + borough/ZIP, `onShare` searches the name directly (zero resolver calls) and falls back to URL resolution only when the name is missing or finds nothing; `render`/`search` now return the result count to enable the fallback; recommended iOS Shortcut becomes 3 actions (Receive Text/URLs → URL Encode → Open `?share=`); motivated by live resolver failures — Google blocking mapu/microlink/jina's datacenter IPs — that the share text sidesteps entirely; tests 46–47 added (47 cases, 171 assertions)
 - v1.19.1 — `parseShare` rejects `JUNK_TITLE` matches as names, and `JUNK_TITLE` gains "Invalid Dynamic Link": live testing showed Google Maps shares a URL-only payload, and Shortcuts' text coercion fetches the link's page title on-device — for a `g_st`-poisoned short link that's Firebase's error page, so the app was searching DOHMH for "INVALID DYNAMIC LINK"; test 47b added (47 cases, 175 assertions)
+- v1.19.2 — iOS tip's Install Shortcut button now links the proven 7-action Expand-URL shortcut (icloud.com/shortcuts/15ee0520647c4598a2da68b9d3070e6c), replacing the old 4-action ?maps= version
 
 ## Known-good Maps parsing baseline
 
