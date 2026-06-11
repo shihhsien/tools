@@ -740,7 +740,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.18.0**
+Current: **v1.18.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -774,6 +774,7 @@ Notable versions:
 - v1.16.3 — `stripShortLinkQuery` strips any query string from `maps.app.goo.gl`/`goo.gl/maps` short links before resolving — share-sheet tracking params (e.g. iOS Shortcuts' `?g_st=com.apple.shortcuts...`) appended to the short code can break the unshortener's redirect lookup; `google.com/maps` URLs are unaffected; test 41 added (41 cases, 142 assertions)
 - v1.17.0 — `splitPlace` now falls back to a 5-digit ZIP mined from the address when no borough name is found, prefilling `#loc` with the ZIP (accepted by `buildUrl`'s `zipcode='${loc}'` clause); test 42 added (42 cases, 145 assertions)
 - v1.18.0 — interpretive context: a per-card `.grade-ctx` line (plain-English meaning of A/B/C, or a pending explainer) and a static collapsible "What do these grades mean?" panel (scoring, critical-vs-upkeep, Pending/Closed meaning, inspection cycle, CDC Salmonella finding, sourced to NYC Health); plus best-effort violation-code categories — `loadViolCodes` pulls NYC Health's keyless CORS-open reference CSV and `violationsHtml` shows a `.viol-cat` label per code, degrading silently if the CSV is unreachable or its schema differs (live `.viol-cat` rendering is unverified from the sandbox — confirm on deploy); tests 43–45b added (45 cases, 161 assertions)
+- v1.18.1 — `viaMicrolink` debug trace now logs the resolved `data.url`/`data.title` (mirrors `viaJina`'s logging), closing a diagnostic gap: a live failure showed microlink returning HTTP 200 with an unusable URL, but the trace couldn't show what Google actually served it
 
 ## Known-good Maps parsing baseline
 

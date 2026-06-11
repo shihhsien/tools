@@ -185,7 +185,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.18.0</div>
+<div class="ver">v1.18.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -604,6 +604,7 @@ async function viaMicrolink(url) {
   const res = await timeoutFetch('https://api.microlink.io/?url=' + encodeURIComponent(url));
   dbg(`viaMicrolink: HTTP ${res.status}`);
   const data = res.ok ? (await res.json()).data : null;
+  if (data) dbg(`viaMicrolink: url="${(data.url || '').slice(0,80)}" title="${(data.title || '').slice(0,40)}"`);
   const name = data && (nameFromUrl(data.url) || cleanTitle(data.title));
   if (!name) { dbg('viaMicrolink: ✗ no name'); throw 0; }
   dbg(`viaMicrolink: ✓ name="${name}"`);
