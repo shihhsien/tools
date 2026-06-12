@@ -13,6 +13,17 @@
 <link rel="apple-touch-icon" href="assets/favicon-180.png">
 <link rel="manifest" href="assets/manifest.json">
 <style>
+  /* Placard font: open metric-compatible Arial Narrow replacement (design system v2) */
+  @font-face {
+    font-family: "Liberation Sans Narrow";
+    src: url("assets/fonts/LiberationSansNarrow-Regular.ttf") format("truetype");
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "Liberation Sans Narrow";
+    src: url("assets/fonts/LiberationSansNarrow-Bold.ttf") format("truetype");
+    font-weight: 700 900; font-style: normal; font-display: swap;
+  }
   /* Authentic DOHMH placard palette: blue A · green B · orange C */
   :root {
     --bg:   #0b0b0c;
@@ -29,12 +40,19 @@
   html { background: var(--bg); overflow-x: hidden; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0 auto; padding: 16px; padding-bottom: 60px; max-width: 600px; overflow-x: hidden; }
   a { color: #60a5fa; }
-  h1 { font-size: 20px; margin: 4px 0 2px; }
-  .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+  /* === Brand logomark (grade chip + wordmark lockup) === */
+  .brand { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; }
+  .brand-chip { flex: 0 0 auto; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: var(--A); color: #fff; font-weight: 700; font-size: 19px; border-radius: 7px; user-select: none; }
+  h1 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+  h1 span { color: var(--muted); }
+  .sub { font-size: 12px; color: var(--muted); margin: 10px 0 16px; line-height: 1.5; }
   .row { display: flex; gap: 8px; }
   .row + .row { margin-top: 8px; }
-  input { flex: 1; width: 100%; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); outline: none; }
+  input { flex: 1; width: 100%; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); outline: none; transition: border-color .12s ease, box-shadow .12s ease; }
   input::placeholder { color: var(--muted); }
+  /* NYC-blue focus ring (design system v2): inputs on any focus, buttons on keyboard focus only */
+  input:focus, #maps-input:focus { border-color: var(--A); box-shadow: 0 0 0 3px rgba(31,87,166,.45); }
+  button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(31,87,166,.45); }
   #maps-input { background: #1a1a2e; border-color: #3a3a5c; }
   .divider { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
   .divider span { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
@@ -51,6 +69,11 @@
   .status.err { color: #f87171; }
   .muted { color: var(--muted); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
+  /* Result entrance (design system v2 --motion-base), gated on reduced-motion */
+  @media (prefers-reduced-motion: no-preference) {
+    .card, .placard-wrap { animation: rise .22s cubic-bezier(.2,.7,.3,1); }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  }
   .top { display: flex; gap: 12px; align-items: center; }
   .grade { flex: 0 0 auto; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 10px; font-weight: 700; font-size: 26px; color: #fff; user-select: none; }
   .grade.A{background:var(--A)} .grade.B{background:var(--B)} .grade.C{background:var(--C)} .grade.other{background:var(--gray);font-size:15px}
@@ -68,7 +91,7 @@
   .placard {
     width: 200px; background: #fff; border-radius: 4px;
     padding: 10px 14px 12px; text-align: center;
-    font-family: "Arial Narrow", Arial, sans-serif;
+    font-family: "Liberation Sans Narrow", "Arial Narrow", Arial, sans-serif;
     box-shadow: 0 2px 16px rgba(0,0,0,.5);
   }
   .placard-header {
@@ -160,7 +183,7 @@
 </style>
 </head>
 <body>
-<h1>NYC Restaurant Grade</h1>
+<header class="brand"><div class="brand-chip">A</div><h1>NYC Restaurant <span>Grade</span></h1></header>
 <div class="sub">Official NYC Health Dept data (DOHMH). Name + optional location (street, borough, or ZIP — not neighborhood).</div>
 
 <div class="row"><input id="q" placeholder="Restaurant name" autocapitalize="characters" autocomplete="off"></div>
@@ -201,7 +224,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.24.0</div>
+<div class="ver">v1.25.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------

@@ -8,6 +8,7 @@
   /* ---- Families ------------------------------------------ */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-placard: "Liberation Sans Narrow", "Arial Narrow", Arial, sans-serif; /* the window placard only — shipped webfont, Arial Narrow fallback */
 
   /* ---- Weights ------------------------------------------- */
   --weight-regular: 400;
@@ -15,15 +16,21 @@
   --weight-semibold: 600; /* labels, names, button text */
   --weight-bold:    700; /* grade letters */
 
-  /* ---- Type scale (px values used verbatim in the app) --- */
-  --text-grade:   26px; /* the big grade letter */
-  --text-title:   20px; /* h1 page title */
+  /* ---- Type scale — modular, ratio 1.25 (major third) ----
+     Anchored at 16px base; steps round to whole px:
+     11 · 13 · 16 · 20 · 25 · 31. The app's original sizes sit
+     exactly on this ladder. ---------------------------------- */
+  --type-ratio: 1.25;
+  --text-hero:    31px; /* step +3 — hero numerals / placard moments */
+  --text-display: 25px; /* step +2 — display, big stats */
+  --text-grade:   26px; /* the big grade letter (legacy, ≈ step +2) */
+  --text-title:   20px; /* step +1 — h1 page title */
   --text-button:  17px; /* primary button label */
-  --text-input:   16px; /* form fields (16px prevents iOS zoom) */
+  --text-input:   16px; /* step 0 — form fields (16px prevents iOS zoom) */
   --text-name:    16px; /* result restaurant name */
-  --text-body:    13px; /* detail rows, status, address */
+  --text-body:    13px; /* step -1 — detail rows, status, address */
   --text-small:   12px; /* page subtitle, violation note */
-  --text-eyebrow: 11px; /* uppercase divider label, version footer */
+  --text-eyebrow: 11px; /* step -2 — uppercase labels, version footer */
 
   /* ---- Line heights -------------------------------------- */
   --leading-tight:  1.2;

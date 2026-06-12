@@ -19,10 +19,15 @@
      black-and-white "grade pending". This is what New Yorkers
      actually see in restaurant windows.
      Legacy traffic-light values kept in comments to revert. */
-  --color-grade-a:   #1f57a6; /* A — NYC placard blue   (was #16a34a) */
-  --color-grade-b:   #2f8b4e; /* B — placard green      (was #ca8a04) */
-  --color-grade-c:   #e07d2a; /* C — placard orange     (was #dc2626) */
+  --color-grade-a:   #1f57a6; /* A — NYC placard blue */
+  --color-grade-b:   #2f8b4e; /* B — placard green */
+  --color-grade-c:   #c96f20; /* C — placard orange (darkened v1.24: #e07d2a was 2.94:1 on white, fails 3:1 large-text floor) */
   --color-grade-na:  #52525b; /* ungraded / unknown (neutral grey) */
+
+  /* Dense variants — darker B/C for SMALL white text (needs 4.5:1;
+     the 48px chips only need 3:1). Used by history mini-chips. */
+  --color-grade-b-dense: #21703e;
+  --color-grade-c-dense: #a05819;
 
   /* ---- NYC institutional blue (the placard ink) ---------- */
   --color-nyc-blue:  #1f57a6; /* the official grade-A / DOHMH blue */
@@ -71,6 +76,8 @@
   --grade-b:       var(--color-grade-b);
   --grade-c:       var(--color-grade-c);
   --grade-na:      var(--color-grade-na);
+  --grade-b-dense: var(--color-grade-b-dense);
+  --grade-c-dense: var(--color-grade-c-dense);
 
   /* Back-compat aliases (older components referenced these) */
   --grade-pass:    var(--color-grade-a);

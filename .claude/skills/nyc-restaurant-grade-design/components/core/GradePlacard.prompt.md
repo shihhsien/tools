@@ -1,12 +1,12 @@
-A faithful recreation of the iconic NYC restaurant grade window placard — the single most recognizable piece of NYC municipal design. Use it as the brand hero, a result's headline, or an empty-state motif. For dense lists, use the compact `GradeBadge` instead.
+The iconic NYC window placard, exactly as the production app renders it (hero above a single result). White card on the dark UI, Arial Narrow, soft shadow.
 
 ```jsx
-<GradePlacard grade="A" />              {/* blue, 0–13 points */}
-<GradePlacard grade="B" size={160} />   {/* green, 14–27 */}
-<GradePlacard grade="C" />              {/* orange, 28+ */}
-<GradePlacard grade="PENDING" />        {/* black & white, under appeal */}
+<GradePlacard grade="A" />              {/* blue ink, 200px production size */}
+<GradePlacard grade="C" size={150} />   {/* orange ink, scaled */}
+<GradePlacard grade="PENDING" />        {/* near-black GRADE PENDING card */}
 ```
 
 Notes:
-- The palette is authentic to the real placards: blue A, green B, orange C, black-and-white pending. Don't recolor it.
-- It's a white object — it's designed to sit on the app's dark background and pop. Give it room; don't shrink below ~140px wide or the footer text stops reading.
+- Authentic palette: blue A / green B / orange C ink on white; pending is near-black. Don't recolor.
+- Production width is 200px; everything (type, rules, padding) scales with `size`.
+- Use as a hero for a single result or brand moments; use `GradeBadge` in dense lists.

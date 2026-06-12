@@ -4,8 +4,6 @@ import * as React from "react";
  * The brand logomark: the signature grade chip set as the mark, optionally
  * locked up with the "NYC Restaurant / Grade" wordmark. Use `showWordmark`
  * off for app icons / favicons. The chip defaults to the green "A".
- *
- * @startingPoint section="Brand" subtitle="Grade-chip logomark + wordmark lockup" viewport="320x120"
  */
 export interface LogomarkProps extends React.HTMLAttributes<HTMLDivElement> {
   /** "horizontal" (chip + inline wordmark) or "stacked" (chip over wordmark). */

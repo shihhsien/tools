@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 55 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 56 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 55-case Playwright test suite, fix any failures, and confirm 222/222 assertions pass.
+Run the full 56-case Playwright test suite, fix any failures, and confirm 227/227 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 55 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 56 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `222 tests: 222 passed, 0 failed`
+Expected output ends with: `227 tests: 227 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -391,6 +391,16 @@ Plain DOHMH search. Test 55 mocks a row with `inspection_date: new Date().toISOS
 `inspection_date: '2018-01-01T00:00:00.000'` (always past `FRESHNESS_OVERDUE_DAYS`, 545
 days) — assert `.meta .freshness.freshness-overdue` present and
 `textContent === 'Inspection overdue'`.
+
+### Design system v2 (test 56, v1.25.0)
+Plain DOHMH search with `J([MAZZAT])` (single result so `.placard` renders). Before
+searching, assert `.brand-chip` textContent `=== 'A'` and `h1` textContent
+`=== 'NYC Restaurant Grade'` (the wordmark's `<span>` is inside the h1, so textContent
+joins cleanly). Then `await p.focus('#q')` and assert the computed `boxShadow !== 'none'`
+(the NYC-blue focus ring). After the card renders, assert
+`getComputedStyle(document.querySelector('.placard')).fontFamily` includes
+`Liberation Sans Narrow` — computed font-family reports the declared stack, so this holds
+even when the TTF doesn't actually load under `file://`.
 
 ## Step 4 — Iterate
 

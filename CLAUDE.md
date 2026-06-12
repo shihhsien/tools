@@ -50,13 +50,14 @@ your head or only in the chat.
 
 - `nyc-restaurant-grade.html` — the entire app (HTML + CSS + JS, one file)
 - `assets/` — PWA assets: `favicon.svg`, `favicon-16/32/48/180/192/512.png`, `manifest.json`
+- `assets/fonts/` — `LiberationSansNarrow-Regular/Bold.ttf`, the placard webfont (v1.25.0)
 - `.github/workflows/pages.yml` — deploys on push to `main`
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (47 cases, 175 assertions)
+- `.claude/skills/test/` — Playwright test skill (56 cases, 227 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
-- `.claude/skills/nyc-restaurant-grade-design/` — design system skill (tokens, components, UI kit)
+- `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
 ## Deployment
 
@@ -470,6 +471,38 @@ errors automatically.
 
 ---
 
+## Design system v2 (v1.25.0)
+
+The `.claude/skills/nyc-restaurant-grade-design/` skill was replaced wholesale with a
+user-supplied v2 bundle (reverse-engineered from the v1.24 app, so tokens/components match
+production). New in v2: components for the v1.15–v1.24 features (ScoreBar, Trend,
+ViolationsList, InspectionHistory, ClosureBanner, Chip), `tokens/fonts.css` +
+`assets/fonts/` (Liberation Sans Narrow), `tokens/interaction.css` (motion/focus/press
+tokens), and a `templates/grade-lookup/` starter. Favicons are unchanged from the repo's.
+
+Four production deltas were applied to the app from that spec:
+
+1. **Brand logomark header.** `<h1>` replaced by `<header class="brand">` — a 34px
+   `.brand-chip` (NYC-blue "A", 7px radius, white 700) beside the wordmark
+   (`h1`, 17px/600, "NYC Restaurant" in `--text` + `<span>Grade</span>` in `--muted`).
+   Mirrors the design system's `Logomark` component (horizontal, size 34).
+2. **Placard webfont.** `@font-face` for Liberation Sans Narrow (Regular + Bold 700–900,
+   `font-display: swap`) served from `assets/fonts/`; `.placard` font stack is now
+   `"Liberation Sans Narrow", "Arial Narrow", Arial, sans-serif` — metric-compatible with
+   Arial Narrow, so devices that have the commercial font render identically.
+3. **Focus ring.** Inputs get a 3px NYC-blue halo (`box-shadow: 0 0 0 3px
+   rgba(31,87,166,.45)`, the `--A` at 45%) plus an `--A` border on **any** focus;
+   buttons only on `:focus-visible`. The `#maps-input:focus` selector is required
+   separately — the plain `input:focus` rule loses specificity to `#maps-input`'s
+   ID-selector border-color. This replaces the old bare `outline: none` (a11y fix).
+4. **Result entrance motion.** `.card`/`.placard-wrap` get a 220ms
+   `cubic-bezier(.2,.7,.3,1)` rise-in (opacity + 6px translateY), wrapped in
+   `@media (prefers-reduced-motion: no-preference)` so reduced-motion users get none.
+
+No JS changes — all four are markup/CSS only. Test 56 covers the lot.
+
+---
+
 ## Card detail panels (v1.15.0)
 
 Each result card carries four data-dense panels below the grade line, all fed
@@ -728,7 +761,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (55 cases, 222 assertions — all must pass):**
+**Required test cases (56 cases, 227 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -797,6 +830,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 54b | Trend hidden for single inspection | `history.length < 2` → no `.trend` element |
 | 55 | Inspection freshness chip — today | row with `inspection_date` = now → `.meta .freshness` text === "Inspected today" |
 | 55b | Inspection freshness chip — overdue | row with `inspection_date` far in the past → `.meta .freshness.freshness-overdue` text === "Inspection overdue" |
+| 56 | Design system v2 — brand header, focus ring, placard webfont | `.brand-chip` text === "A"; `h1` text === "NYC Restaurant Grade"; focused `#q` has a non-`none` computed `box-shadow`; `.placard` computed font-family includes "Liberation Sans Narrow" |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -837,6 +871,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the `&`-in-name test (test 53, v1.23.1): trigger `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` via `triggerMaps`. Mock `mapu.retiolus.net`/`microlink.io`/`jina.ai` as always-fail (`E`) — `nameFromUrl` should resolve `?q=` directly without any resolver call. Mock `43nn-pn8j` to `J([mkRow({ dba: 'MUTEKI UDON & RAMEN' })])`. Wait for `.card`, then assert `#q` (uppercased) `=== 'MUTEKI UDON & RAMEN'` and `.name === 'MUTEKI UDON & RAMEN'` — proves `isName`'s reject-regex no longer rejects names containing `&`.
 - For the trend tests (tests 54/54b, v1.24.0): plain DOHMH search. Test 54 mocks two rows sharing `camis`/`dba`, distinct `inspection_date`s — newest with `score:'5'`, older with `score:'20'`. `groupByRestaurant` sorts `history` newest-first, so `history[0].score (5) < history[1].score (20)` → improving. Assert `.trend.trend-up` present and its text includes `Improving` and `(15 pts)`. Test 54b mocks a single row (`J([MAZZAT])`) — `history.length < 2` → assert `.trend` is absent.
 - For the freshness tests (tests 55/55b, v1.24.0): plain DOHMH search. Test 55 mocks a row with `inspection_date: new Date().toISOString()` (today, computed at test-run time so it's always "now") — assert `.meta .freshness` present and `textContent === 'Inspected today'`. Test 55b mocks a row with `inspection_date: '2018-01-01T00:00:00.000'` (always > `FRESHNESS_OVERDUE_DAYS` old) — assert `.meta .freshness.freshness-overdue` present and `textContent === 'Inspection overdue'`.
+
+- For the design-system test (test 56, v1.25.0): plain DOHMH search with `J([MAZZAT])` (single result so `.placard` renders). Before searching, assert `.brand-chip` textContent `=== 'A'` and `h1` textContent `=== 'NYC Restaurant Grade'`. Then `page.focus('#q')` and assert `getComputedStyle` `boxShadow !== 'none'` (the NYC-blue focus ring). After the card renders, assert `getComputedStyle(document.querySelector('.placard')).fontFamily` includes `Liberation Sans Narrow` — computed font-family reports the declared stack, so this holds even if the TTF doesn't load under `file://`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -927,7 +963,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.24.0**
+Current: **v1.25.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -971,6 +1007,7 @@ Notable versions:
 - v1.23.0 — "Resy ↗" review link added alongside Map/Yelp (`resy.com/cities/ny/venues?query=NAME`); since the Amex Resy credit applies to any Resy "Pay at Restaurant" purchase (no separate curated list), a Resy search link is the cheap way to surface that without scraping Resy's API-less site. Also adds a `#recent` "recently searched" chip list (localStorage-backed, last 6 searches, click to re-search, "Clear recent" to reset) — `search()` now calls `saveRecent(name, loc)` on any successful render, covering manual searches, deep links, and resolved Maps/share links. Test 50 updated, test 52 added (52 cases, 199 assertions)
 - v1.23.1 — fixed `isName`'s reject-regex (`nameFromUrl`, `cleanTitle`, `parseShare`) rejecting any name containing `&` — restaurants like "Muteki Udon & Ramen" failed with "Couldn't find a restaurant name in this link" even though `?q=Muteki+Udon+%26+Ramen` resolves the name with zero network calls. The `&` check was redundant: it was meant to reject tracking-param garbage (`?g_st=ic`), which the existing `?`/`=` checks already catch. Regex narrowed from `/[?=&]/` to `/[?=]/` in all three call sites. Test 53 added (53 cases, 202 assertions)
 - v1.24.0 — two new card features from a June 2026 research run: a `.trend` indicator (`trendHtml`) comparing the two most recent inspection scores (lower = better) — ▲ "Improving (N pts)" in green, ▼ "Declining (N pts)" in orange, or ▬ "No change", shown after the score bar whenever ≥2 inspections exist; and an "inspection freshness" chip (`fmtFreshness`) as the first item in `.meta` — "Inspected today/N days/N month(s) ago", or "Inspection overdue" past `FRESHNESS_OVERDUE_DAYS` (545 days, ~18 months) without a new inspection. Both are pure client-side derivations from data the app already fetches. Tests 54–55b added (55 cases, 222 assertions)
+- v1.25.0 — design system v2 applied: the `nyc-restaurant-grade-design` skill replaced with the user-supplied v2 bundle (new components for the v1.15–1.24 features, fonts + interaction tokens, templates), and its four production deltas implemented in the app — brand logomark header (34px NYC-blue "A" chip + "NYC Restaurant Grade" wordmark replacing the plain `<h1>`), Liberation Sans Narrow placard webfont (`assets/fonts/`, `@font-face`, ahead of the "Arial Narrow" fallback), NYC-blue focus ring (3px `rgba(31,87,166,.45)` halo — inputs on any focus, buttons on `:focus-visible`; replaces the bare `outline: none`), and a 220ms rise-in entrance for `.card`/`.placard-wrap` gated on `prefers-reduced-motion`. Markup/CSS only, no JS changes. Test 56 added (56 cases, 227 assertions)
 
 ## Known-good Maps parsing baseline
 

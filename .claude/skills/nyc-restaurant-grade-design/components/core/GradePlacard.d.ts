@@ -1,19 +1,17 @@
 import * as React from "react";
 
 /**
- * A faithful recreation of the iconic NYC DOHMH window placard (Two Twelve,
- * 2010): white paper card, single-color ink, "SANITARY INSPECTION GRADE"
- * header, a giant letter, and the department footer. The authentic blue-A /
- * green-B / orange-C palette — and the black-and-white "GRADE PENDING" card.
- * Use it as the brand hero / empty-state motif, not as a dense list chip
- * (use GradeBadge for those).
- *
- * @startingPoint section="Brand" subtitle="The iconic NYC grade window placard" viewport="260x340"
+ * The iconic NYC DOHMH window placard, matched to the production app
+ * (v1.24): 200px white card, 4px radius, Arial Narrow, "SANITARY
+ * INSPECTION / GRADE" header, 110px letter, compact "NYC DEPT OF HEALTH
+ * & MENTAL HYGIENE" footer, soft shadow. Blue A / green B / orange C ink;
+ * any other grade renders the near-black "GRADE PENDING" card. The app
+ * shows it as a hero above a single search result.
  */
 export interface GradePlacardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** "A" | "B" | "C" (colored) or "PENDING" for the black-and-white card. */
+  /** "A" | "B" | "C" (colored ink) — anything else renders GRADE PENDING. */
   grade?: "A" | "B" | "C" | "PENDING" | string;
-  /** Card width in px; height and type scale from it. Default 200. */
+  /** Card width in px (production is 200); everything scales from it. */
   size?: number;
 }
 

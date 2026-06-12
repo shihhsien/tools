@@ -4,8 +4,6 @@ import * as React from "react";
  * The signature color-coded inspection-grade chip.
  * A = green (pass), B = amber (caution), C = red (fail); anything else
  * (e.g. "N/A", "?") renders on the neutral pending grey at a smaller size.
- *
- * @startingPoint section="Brand" subtitle="The color-coded grade chip" viewport="200x120"
  */
 export interface GradeBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Letter grade or short status string. Default "A". */

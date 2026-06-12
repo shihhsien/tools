@@ -1,15 +1,15 @@
 import * as React from "react";
 
 /**
- * The primary action button — full-width, inverted (white fill / black
- * label), with the app's signature opacity-dim press state. This is the
- * only button style the product uses.
- *
- * @startingPoint section="Core" subtitle="Primary inverted action button" viewport="360x80"
+ * Action button, full-width. "primary" is the white inverted button (one
+ * per screen); "secondary" is the dark card-surface button the app added
+ * for the "📍 Graded restaurants near me" action — card fill, hairline
+ * border, slightly smaller type. Both share the opacity-dim press state.
  */
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Button label. */
   children?: React.ReactNode;
+  /** "primary" white inverted (default), or "secondary" dark outlined. */
+  variant?: "primary" | "secondary";
   /** Dim to 45% and disable interaction. */
   disabled?: boolean;
 }

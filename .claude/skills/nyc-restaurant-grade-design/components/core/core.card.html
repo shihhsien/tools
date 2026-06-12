@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x560" name="Core components" subtitle="GradeBadge, Button, Input, Divider, StatusLine, Card, ResultCard" -->
+<!-- @dsCard group="Components" viewport="700x1050" name="Core components" subtitle="GradeBadge, Button, Chip, Input, Divider, StatusLine, ScoreBar, Trend, ViolationsList, InspectionHistory, ResultCard" -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,62 +22,95 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="../../_ds_bundle.js"></script>
 <script type="text/babel">
-  const { GradeBadge, Button, Input, Divider, StatusLine, Card, ResultCard } =
+  const { GradeBadge, Button, Chip, Input, Divider, StatusLine, Card, ScoreBar, Trend, ViolationsList, InspectionHistory, ResultCard } =
     window.NYCRestaurantGradeDesignSystem_09ad2a;
 
   function Demo() {
     return (
       <div className="col">
         <div className="sec">
-          <div className="lbl">GradeBadge — solid</div>
+          <div className="lbl">GradeBadge — solid · soft · sizes</div>
           <div className="rowflex">
             <GradeBadge grade="A" />
             <GradeBadge grade="B" />
             <GradeBadge grade="C" />
             <GradeBadge grade="N/A" />
-            <GradeBadge grade="?" />
-          </div>
-        </div>
-
-        <div className="sec">
-          <div className="lbl">GradeBadge — soft</div>
-          <div className="rowflex">
-            <GradeBadge grade="A" soft />
             <GradeBadge grade="B" soft />
-            <GradeBadge grade="C" soft />
             <GradeBadge grade="A" size={32} />
           </div>
         </div>
 
         <div className="sec">
-          <div className="lbl">Input — default & accent · Divider</div>
+          <div className="lbl">Input · Divider · Chip</div>
           <div className="stack">
             <Input placeholder="Restaurant name" />
-            <Input placeholder="Street, borough, or ZIP (optional)" />
             <Divider label="or paste a link" />
             <Input variant="accent" placeholder="Paste a Google Maps link…" />
+            <div className="rowflex" style={{ gap: 6 }}>
+              <Chip>JOE'S PIZZA</Chip>
+              <Chip>OITA · MANHATTAN</Chip>
+              <Chip>MAZZAT</Chip>
+            </div>
           </div>
         </div>
 
         <div className="sec">
-          <div className="lbl">Button · StatusLine</div>
+          <div className="lbl">Button — primary · secondary · StatusLine</div>
           <Button>Look up grade</Button>
+          <Button variant="secondary">📍 Graded restaurants near me</Button>
           <StatusLine>1 match · official data</StatusLine>
-          <StatusLine tone="error">Couldn't find a restaurant name in this link. <a href="#">Open it ↗</a></StatusLine>
         </div>
 
         <div className="sec">
-          <div className="lbl">ResultCard — graded & pending</div>
+          <div className="lbl">ScoreBar · Trend</div>
+          <Card>
+            <ScoreBar score={12} grade="A" />
+            <Trend current={12} previous={19} />
+          </Card>
+          <div style={{ height: 10 }}></div>
+          <Card>
+            <ScoreBar score={26} grade="B" />
+            <Trend current={26} previous={19} />
+          </Card>
+        </div>
+
+        <div className="sec">
+          <div className="lbl">ViolationsList · InspectionHistory (tap to expand)</div>
+          <Card>
+            <ViolationsList violations={[
+              { desc: "Evidence of mice or live mice present.", flag: "Critical", code: "04L", category: "Pests" },
+              { desc: "Non-food contact surface improperly constructed.", flag: "Not Critical", code: "10F", category: "Facility maintenance" },
+            ]} />
+            <InspectionHistory history={[
+              { date: "Mar 3, 2025", grade: "A", score: 12, type: "Re-inspection" },
+              { date: "Jan 20, 2025", grade: "B", score: 19, type: "Initial" },
+              { date: "Aug 2, 2024", closed: true, score: 52, type: "Initial" },
+            ]} />
+            <ViolationsList violations={[]} />
+          </Card>
+        </div>
+
+        <div className="sec">
+          <div className="lbl">ResultCard — full v1.24 anatomy · pending</div>
           <ResultCard
             grade="A" name="Joe's Pizza"
             address="7 Carmine St, Manhattan 10014"
             score={12} gradedDate="Mar 3, 2025"
             inspectedDate="Mar 3, 2025" inspectionType="Cycle Inspection / Re-inspection"
+            freshness="Inspected 3 months ago"
+            meta={[<span key="c">Pizza</span>, <a key="m" style={{ color: "var(--text-secondary)", textDecoration: "underline" }} href="#">Map ↗</a>, <a key="y" style={{ color: "var(--text-secondary)", textDecoration: "underline" }} href="#">Yelp ↗</a>]}
+            showContext
+            violations={[{ desc: "Non-food contact surface improperly constructed.", flag: "Not Critical", code: "10F" }]}
+            history={[
+              { date: "Mar 3, 2025", grade: "A", score: 12, type: "Re-inspection" },
+              { date: "Jan 20, 2025", grade: "B", score: 19, type: "Initial" },
+            ]}
           />
           <ResultCard
             pending name="New Spot Cafe"
             address="55 Bedford Ave, Brooklyn 11211"
             score={9} inspectedDate="May 1, 2025" inspectionType="Pre-permit (Operational)"
+            violations={[]}
           />
         </div>
       </div>

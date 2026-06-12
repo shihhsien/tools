@@ -1,10 +1,11 @@
-The primary action button — full-width, white fill, black label, with opacity-dim press feedback. The product has exactly one button style; use it for the main action on a screen.
+Action buttons — both production styles.
 
 ```jsx
 <Button onClick={search}>Look up grade</Button>
+<Button variant="secondary" onClick={near}>📍 Graded restaurants near me</Button>
 <Button disabled>Looking up…</Button>
 ```
 
 Notes:
-- Always full-width by design (mobile-first). Wrap in a constrained container if you need it narrower.
-- Press state is opacity → 0.7 (touch-first); disabled drops to 0.45. No hover color shift, matching the app.
+- One primary (white) button per screen. "secondary" is the dark, hairline-bordered style used for the geolocation action — it sits directly under the primary with an 8px gap.
+- Press state is opacity-dim on both. Always full-width by design.

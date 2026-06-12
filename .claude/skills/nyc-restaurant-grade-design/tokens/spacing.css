@@ -39,4 +39,5 @@
      ------------------------------------------------------------ */
   --shadow-none:    none;
   --shadow-overlay: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --shadow-placard: 0 2px 16px rgba(0, 0, 0, 0.5); /* the one shadowed object */
 }

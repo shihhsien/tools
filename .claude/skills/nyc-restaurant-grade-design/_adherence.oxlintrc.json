@@ -35,12 +35,28 @@
         "message": "Raw px value — use a design-system spacing token via var()."
       },
       {
-        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|disabled|key|ref|className|style|children)$/]",
-        "message": "<Button> doesn't accept that prop. Declared props: children, disabled."
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Liberation Sans Narrow))/i]",
+        "message": "Font not provided by the design system. Available: Liberation Sans Narrow."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|variant|disabled|key|ref|className|style|children)$/]",
+        "message": "<Button> doesn't accept that prop. Declared props: children, variant, disabled."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='variant'] > Literal[value!=/^(?:primary|secondary)$/]",
+        "message": "<Button> variant must be one of 'primary' | 'secondary'."
       },
       {
         "selector": "JSXOpeningElement[name.name='Card'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|key|ref|className|style|children)$/]",
         "message": "<Card> doesn't accept that prop. Declared props: children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Chip'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|key|ref|className|style|children)$/]",
+        "message": "<Chip> doesn't accept that prop. Declared props: children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ClosureBanner'] > JSXAttribute > JSXIdentifier[name!=/^(?:date|key|ref|className|style|children)$/]",
+        "message": "<ClosureBanner> doesn't accept that prop. Declared props: date."
       },
       {
         "selector": "JSXOpeningElement[name.name='Divider'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|key|ref|className|style|children)$/]",
@@ -63,6 +79,10 @@
         "message": "<Input> variant must be one of 'default' | 'accent'."
       },
       {
+        "selector": "JSXOpeningElement[name.name='HistoryEntry'] > JSXAttribute > JSXIdentifier[name!=/^(?:date|grade|score|type|closed|key|ref|className|style|children)$/]",
+        "message": "<HistoryEntry> doesn't accept that prop. Declared props: date, grade, score, type, closed."
+      },
+      {
         "selector": "JSXOpeningElement[name.name='Logomark'] > JSXAttribute > JSXIdentifier[name!=/^(?:layout|grade|size|showWordmark|key|ref|className|style|children)$/]",
         "message": "<Logomark> doesn't accept that prop. Declared props: layout, grade, size, showWordmark."
       },
@@ -71,8 +91,12 @@
         "message": "<Logomark> layout must be one of 'horizontal' | 'stacked'."
       },
       {
-        "selector": "JSXOpeningElement[name.name='ResultCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:grade|name|address|score|gradedDate|inspectedDate|inspectionType|violation|criticalFlag|pending|key|ref|className|style|children)$/]",
-        "message": "<ResultCard> doesn't accept that prop. Declared props: grade, name, address, score, gradedDate, inspectedDate, inspectionType, violation, criticalFlag, pending."
+        "selector": "JSXOpeningElement[name.name='ResultCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:grade|name|address|score|gradedDate|inspectedDate|inspectionType|pending|meta|freshness|overdue|showContext|violations|history|closedDate|key|ref|className|style|children)$/]",
+        "message": "<ResultCard> doesn't accept that prop. Declared props: grade, name, address, score, gradedDate, inspectedDate, inspectionType, pending, meta, freshness, overdue, showContext, violations, history, closedDate."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ScoreBar'] > JSXAttribute > JSXIdentifier[name!=/^(?:score|grade|max|key|ref|className|style|children)$/]",
+        "message": "<ScoreBar> doesn't accept that prop. Declared props: score, grade, max."
       },
       {
         "selector": "JSXOpeningElement[name.name='StatusLine'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|children|key|ref|className|style|children)$/]",
@@ -81,6 +105,14 @@
       {
         "selector": "JSXOpeningElement[name.name='StatusLine'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:default|error)$/]",
         "message": "<StatusLine> tone must be one of 'default' | 'error'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Trend'] > JSXAttribute > JSXIdentifier[name!=/^(?:current|previous|key|ref|className|style|children)$/]",
+        "message": "<Trend> doesn't accept that prop. Declared props: current, previous."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Violation'] > JSXAttribute > JSXIdentifier[name!=/^(?:desc|flag|code|category|key|ref|className|style|children)$/]",
+        "message": "<Violation> doesn't accept that prop. Declared props: desc, flag, code, category."
       }
     ]
   },
@@ -102,6 +134,12 @@
       "Card": {
         "replaces": []
       },
+      "Chip": {
+        "replaces": []
+      },
+      "ClosureBanner": {
+        "replaces": []
+      },
       "Divider": {
         "replaces": []
       },
@@ -114,13 +152,25 @@
       "Input": {
         "replaces": []
       },
+      "HistoryEntry": {
+        "replaces": []
+      },
       "Logomark": {
         "replaces": []
       },
       "ResultCard": {
         "replaces": []
       },
+      "ScoreBar": {
+        "replaces": []
+      },
       "StatusLine": {
+        "replaces": []
+      },
+      "Trend": {
+        "replaces": []
+      },
+      "Violation": {
         "replaces": []
       }
     },
@@ -135,7 +185,9 @@
       "--color-error",
       "--color-grade-a",
       "--color-grade-b",
+      "--color-grade-b-dense",
       "--color-grade-c",
+      "--color-grade-c-dense",
       "--color-grade-na",
       "--color-gray",
       "--color-ink",
@@ -148,11 +200,16 @@
       "--color-nyc-blue-deep",
       "--color-placard-paper",
       "--color-placard-pending",
+      "--focus-border",
+      "--focus-ring",
       "--font-mono",
+      "--font-placard",
       "--font-sans",
       "--grade-a",
       "--grade-b",
+      "--grade-b-dense",
       "--grade-c",
+      "--grade-c-dense",
       "--grade-caution",
       "--grade-fail",
       "--grade-na",
@@ -164,10 +221,13 @@
       "--leading-normal",
       "--leading-snug",
       "--leading-tight",
+      "--motion-base",
+      "--motion-fast",
       "--nyc-blue",
       "--nyc-blue-deep",
       "--placard-paper",
       "--placard-pending",
+      "--press-opacity",
       "--radius-lg",
       "--radius-md",
       "--radius-pill",
@@ -175,6 +235,7 @@
       "--radius-xl",
       "--shadow-none",
       "--shadow-overlay",
+      "--shadow-placard",
       "--space-1",
       "--space-10",
       "--space-2",
@@ -192,9 +253,11 @@
       "--tap-target",
       "--text-body",
       "--text-button",
+      "--text-display",
       "--text-error",
       "--text-eyebrow",
       "--text-grade",
+      "--text-hero",
       "--text-input",
       "--text-inverse",
       "--text-link",
@@ -206,6 +269,7 @@
       "--text-tertiary",
       "--text-title",
       "--tracking-eyebrow",
+      "--type-ratio",
       "--weight-bold",
       "--weight-medium",
       "--weight-regular",
@@ -222,6 +286,8 @@
       "--color-grade-b": "color",
       "--color-grade-c": "color",
       "--color-grade-na": "color",
+      "--color-grade-b-dense": "color",
+      "--color-grade-c-dense": "color",
       "--color-nyc-blue": "color",
       "--color-nyc-blue-deep": "color",
       "--color-placard-paper": "color",
@@ -249,6 +315,8 @@
       "--grade-b": "color",
       "--grade-c": "color",
       "--grade-na": "color",
+      "--grade-b-dense": "color",
+      "--grade-c-dense": "color",
       "--grade-pass": "color",
       "--grade-caution": "color",
       "--grade-fail": "color",
@@ -259,10 +327,14 @@
       "--placard-pending": "color",
       "--font-sans": "font",
       "--font-mono": "font",
+      "--font-placard": "font",
       "--weight-regular": "font",
       "--weight-medium": "font",
       "--weight-semibold": "font",
       "--weight-bold": "font",
+      "--type-ratio": "font",
+      "--text-hero": "font",
+      "--text-display": "font",
       "--text-grade": "font",
       "--text-title": "font",
       "--text-button": "font",
@@ -296,8 +368,16 @@
       "--tap-target": "spacing",
       "--border-width": "spacing",
       "--shadow-none": "shadow",
-      "--shadow-overlay": "shadow"
+      "--shadow-overlay": "shadow",
+      "--shadow-placard": "shadow",
+      "--motion-fast": "other",
+      "--motion-base": "other",
+      "--focus-ring": "color",
+      "--focus-border": "color",
+      "--press-opacity": "other"
     },
-    "fontFamilies": []
+    "fontFamilies": [
+      "Liberation Sans Narrow"
+    ]
   }
 }

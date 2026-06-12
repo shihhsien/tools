@@ -87,17 +87,21 @@ website.
   primary button inverts the whole scheme — white fill, black text.
 - **The grade colors are authentic NYC.** This system uses the real DOHMH
   placard palette, not a traffic light: **blue A** (`#1f57a6`, 0–13 points),
-  **green B** (`#2f8b4e`, 14–27), **orange C** (`#e07d2a`, 28+), and a
+  **green B** (`#2f8b4e`, 14–27), **orange C** (`#c96f20`, 28+), and a
   **black-and-white "grade pending"** card for restaurants under appeal. There
-  is deliberately *no red* — even a C is a calm orange. The blue A doubles as
-  the brand's institutional color (`--nyc-blue`). (The original app shipped a
-  green-A traffic light; those legacy values are preserved in comments in
-  `tokens/colors.css` if you ever need to revert.)
+  is deliberately *no red* in grading — even a C is a calm orange; red is
+  reserved for one thing only, the ⚠ Closed-by-DOHMH banner. The C was
+  darkened from the photographic placard orange in v1.24 for contrast
+  (#e07d2a is 2.94:1 on white, failing the 3:1 large-text floor). Dense
+  variants (`--grade-b-dense` #21703e, `--grade-c-dense` #a05819) exist for
+  the 22px history mini-chips, whose 11px white text needs 4.5:1. The blue A
+  doubles as the brand's institutional color (`--nyc-blue`).
 - **Type.** The native system UI stack
-  (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto`) at small sizes —
-  20px title down to 11px eyebrow. Weights are 400/600/700 only; 600 carries all
-  emphasis (names, buttons, labels), 700 is reserved for the grade letter. Mono
-  appears once, in the `?debug=1` trace panel.
+  (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto`) on a **modular
+  scale, ratio 1.25** anchored at 16px: 11 · 13 · 16 · 20 · 25 · 31. Weights are
+  400/600/700 only; 600 carries all emphasis (names, buttons, labels), 700 is
+  reserved for the grade letter and hero numerals. Mono appears once, in the
+  `?debug=1` trace panel.
 - **Spacing.** Tight, mobile rhythm built on a 2/4/8/16 logic. 16px page
   padding, 8px row gaps, 12–14px field/card padding, 12px between cards. Content
   is capped at 600px and left-aligned — it never centers or grows wide.
@@ -111,9 +115,14 @@ website.
   shadow token exists for menus/dialogs the original never needed.
 - **Elevation model.** Communicated by *value*, not shadow: page is darkest,
   cards are lighter, borders separate. That's the whole system.
-- **Animation.** Effectively none. No transitions, no easing curves, no
-  entrance animation. State changes are instant. The only feedback is the button
-  press state.
+- **Animation.** Near-none, by intent. Two motion tokens exist:
+  `--motion-fast` (120ms ease) for focus/hover/press transitions, and
+  `--motion-base` (220ms, gentle out-curve) for content entrances (results
+  rising in). Always gate entrances on `prefers-reduced-motion`. No loops, no
+  bounces, no parallax.
+- **Focus.** Every interactive element shows `--focus-ring` (a 3px NYC-blue
+  halo) plus a blue border on keyboard focus. Inputs show it on any focus;
+  buttons only on `:focus-visible`.
 - **Hover / press.** Touch-first, so there are no hover styles. The press state
   is a single move: `button:active { opacity: .7 }`. Tap highlight is killed
   globally (`-webkit-tap-highlight-color: transparent`). Adopt opacity-dim as
@@ -136,14 +145,20 @@ website.
 
 ## Iconography
 
-The app is **almost entirely icon-free** — a deliberate choice that keeps it
-feeling like a native form, not a web page.
+The app is **nearly icon-free**, but v1.24 sanctioned a small set of unicode
+glyphs — used as text, never as an icon font or SVG set:
 
-- **No icon font, no SVG sprite, no PNG icons.** Nothing was imported because
-  nothing exists in the source.
-- **The one glyph:** `↗` (U+2197, North-East Arrow) appended to outbound-link
-  text ("Open it ↗"). It signals "leaves this page". Reuse this exact glyph for
-  external links rather than introducing an icon set.
+- **No icon font, no SVG sprite, no PNG icons.** All "icons" are unicode
+  characters inline in text.
+- **The sanctioned glyphs:** `↗` (outbound links — "Map ↗", "Yelp ↗",
+  "Open it ↗"), `📍` (the one emoji, on the "Graded restaurants near me"
+  button), `⚠` (closure banner), `✓` ("No violations", "Done"),
+  `▲▼▬` (trend up/down/flat), `▸▾` (disclosure carets on collapsible
+  sections), `·` (the universal meta/status separator).
+- **Favicon / app icon:** the blue "A" chip — `assets/favicon.svg` + PNG
+  sizes, generated from the logomark.
+- Keep new glyphs out unless production adopts them; don't substitute an
+  icon library for any of the above.
 - **No logo / favicon.** The base app ships no logomark; this design system
   adds one — see the `Logomark` component and the "Logomark & lockups" brand
   card. It is built entirely from the existing grade chip (the green "A") plus
@@ -166,9 +181,11 @@ Root manifest of this design system:
 | Path | What |
 |---|---|
 | `styles.css` | Global entry point (consumers link this). `@import`s only. |
+| `tokens/fonts.css` | `@font-face` for Liberation Sans Narrow (the shipped placard font). |
 | `tokens/colors.css` | Base palette + semantic aliases (surfaces, text, grade scale). |
 | `tokens/typography.css` | System font stack, weights, px type scale, leading. |
 | `tokens/spacing.css` | Spacing scale, radii, layout caps, the flat-elevation note. |
+| `tokens/interaction.css` | Motion durations, the NYC-blue focus ring, press opacity. |
 | `readme.md` | This guide. |
 | `SKILL.md` | Agent Skill manifest for downloading into Claude Code. |
 
@@ -187,25 +204,41 @@ the blue "A" grade chip — link them with `<link rel="icon" …>`.
 | Component | Role |
 |---|---|
 | `Logomark` | The brand mark — grade chip + wordmark lockup (horizontal/stacked/icon). |
-| `GradePlacard` | Faithful recreation of the iconic NYC window placard (brand hero). |
-| `GradeBadge` | The signature color-coded grade chip (A/B/C/other; solid + soft). |
-| `Button` | Primary inverted (white) action button with press-dim. |
+| `GradePlacard` | The iconic NYC window placard, production spec (hero for single results). |
+| `GradeBadge` | The compact color-coded grade chip (A/B/C/other; solid + soft). |
+| `Button` | Primary inverted (white) + secondary dark-outlined action buttons. |
+| `Chip` | Small tappable chip (recently-searched row). |
 | `Input` | Form field (default + Maps-link "accent" variant). |
-| `Field` | Labeled input row wrapper. |
 | `Divider` | Eyebrow "OR PASTE A LINK" labeled rule. |
 | `Card` | The base surface (fill + 1px border + 14px radius). |
-| `ResultCard` | Composed inspection result (grade chip + name + detail rows). |
 | `StatusLine` | Narration / error status text. |
+| `ScoreBar` | 4px score track with B/C threshold ticks + proximity note. |
+| `Trend` | ▲ Improving / ▼ Declining / ▬ No change vs. previous inspection. |
+| `ViolationsList` | Collapsible violations with Critical/Not-Critical flag chips. |
+| `InspectionHistory` | Collapsible timeline with dense-color mini grade chips. |
+| `ClosureBanner` | ⚠ Closed-by-DOHMH banner — the system's only red element. |
+| `ResultCard` | Fully-composed result — the production v1.24 card anatomy. |
 
 **UI kit** — `ui_kits/grade-lookup/`:
 high-fidelity, interactive recreation of the full app (search, link paste,
 results, no-results, pending grade, error states).
 
+**Template** — `templates/grade-lookup/`:
+the same screen packaged as a copyable starting folder for consuming projects
+(`index.html` + `App.jsx` + `Header.jsx` + `ds-base.js` — one line to repoint
+at the bound design system).
+
 ---
 
-## A note on font substitution
+## A note on fonts
 
-The app uses the **native system font stack** by design — there are no webfont
-files to ship, and none are needed. Any platform rendering this system will use
-its own UI font (SF Pro on Apple, Segoe UI on Windows, Roboto on Android),
-exactly as the product intends. No substitution flag applies.
+The UI uses the **native system font stack** by design — no webfont needed.
+The one exception is the **grade placard**, which production sets in Arial
+Narrow. Arial Narrow is a commercial Monotype font we can't redistribute, so
+this system ships **Liberation Sans Narrow** (Red Hat's open,
+metric-compatible Arial Narrow replacement, v1.07.x) in `assets/fonts/` with
+`@font-face` rules in `tokens/fonts.css`. The placard token falls back through
+`"Liberation Sans Narrow" → "Arial Narrow" → Arial`, so on machines that do
+have Arial Narrow the rendering is effectively identical. **Flagged
+substitution:** if you'd rather ship Arial Narrow itself, drop the licensed
+`.ttf` into `assets/fonts/` and I'll repoint the token.

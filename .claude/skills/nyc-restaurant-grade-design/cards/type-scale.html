@@ -1,4 +1,4 @@
-<!-- @dsCard group="Type" viewport="700x180" name="Scale" subtitle="System UI stack — title to eyebrow, the sizes used in-app" -->
+<!-- @dsCard group="Type" viewport="700x220" name="Scale" subtitle="Modular scale, ratio 1.25 — 11 · 13 · 16 · 20 · 25 · 31" -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,10 +8,12 @@
   body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); padding: 22px; color: var(--text-primary); }
   .spec { display: flex; align-items: baseline; gap: 14px; padding: 6px 0; }
   .spec + .spec { border-top: 1px solid var(--border-default); }
-  .label { flex: 0 0 130px; color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); }
+  .label { flex: 0 0 140px; color: var(--text-tertiary); font-size: 11px; font-family: var(--font-mono); }
 </style>
 </head>
 <body>
+  <div class="spec"><span class="label">hero · 31/700</span><span style="font-size:var(--text-hero);font-weight:var(--weight-bold)">Grade A</span></div>
+  <div class="spec"><span class="label">display · 25/600</span><span style="font-size:var(--text-display);font-weight:var(--weight-semibold)">Score 12 of 13</span></div>
   <div class="spec"><span class="label">title · 20/600</span><span style="font-size:var(--text-title);font-weight:var(--weight-semibold)">NYC Restaurant Grade</span></div>
   <div class="spec"><span class="label">button · 17/600</span><span style="font-size:var(--text-button);font-weight:var(--weight-semibold)">Look up grade</span></div>
   <div class="spec"><span class="label">name · 16/600</span><span style="font-size:var(--text-name);font-weight:var(--weight-semibold)">Joe's Pizza</span></div>
