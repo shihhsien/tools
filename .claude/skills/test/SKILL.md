@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 53 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 55 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 53-case Playwright test suite, fix any failures, and confirm 202/202 assertions pass.
+Run the full 55-case Playwright test suite, fix any failures, and confirm 222/222 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 52 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 55 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `202 tests: 202 passed, 0 failed`
+Expected output ends with: `222 tests: 222 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -375,6 +375,22 @@ regex incorrectly rejected as query-string garbage.
 `saveRecent` is called from inside `search()`'s success branch, so it fires for manual
 searches, deep links, and resolved Maps/share links alike — no separate mocking needed
 beyond the one DOHMH route.
+
+### Trend indicator (tests 54/54b, v1.24.0)
+Plain DOHMH search. Test 54 mocks two rows sharing `camis`/`dba`, distinct `inspection_date`s
+— newest with `score:'5'`, older with `score:'20'`. `groupByRestaurant` sorts `history`
+newest-first, so `history[0].score (5) < history[1].score (20)` → improving. Assert
+`.trend.trend-up` present, text includes `Improving` and `(15 pts)`. Test 54b mocks a single
+row (`J([MAZZAT])`) — `history.length < 2` → assert `.trend` is absent (same guard as
+`historyHtml`).
+
+### Inspection freshness chip (tests 55/55b, v1.24.0)
+Plain DOHMH search. Test 55 mocks a row with `inspection_date: new Date().toISOString()`
+(today, computed at test-run time) — assert `.meta .freshness` present and
+`textContent === 'Inspected today'`. Test 55b mocks a row with
+`inspection_date: '2018-01-01T00:00:00.000'` (always past `FRESHNESS_OVERDUE_DAYS`, 545
+days) — assert `.meta .freshness.freshness-overdue` present and
+`textContent === 'Inspection overdue'`.
 
 ## Step 4 — Iterate
 

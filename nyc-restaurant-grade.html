@@ -109,6 +109,14 @@
   .score-tick { position: absolute; top: -3px; width: 1px; height: 10px; background: var(--muted); opacity: .4; }
   .score-tick span { position: absolute; top: 11px; left: -4px; font-size: 9px; color: var(--muted); }
   .score-note { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  /* === Trend (vs. previous inspection) === */
+  .trend { font-size: 12px; font-weight: 600; margin-top: 6px; }
+  .trend-arrow { font-size: 11px; }
+  .trend-up { color: var(--B); }
+  .trend-down { color: var(--C); }
+  .trend-flat { color: var(--muted); }
+  /* === Inspection freshness (in .meta) === */
+  .freshness-overdue { color: var(--C); font-weight: 600; }
   /* === Violations === */
   .no-viols { font-size: 12px; color: var(--muted); margin-top: 8px; }
   .viols, .hist-wrap { margin-top: 8px; }
@@ -193,7 +201,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.23.1</div>
+<div class="ver">v1.24.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -245,6 +253,21 @@ function fmtPhone(p) {
 
 function fmtDist(m) {
   return m < 975 ? `${Math.round(m)} m away` : `${(m / 1000).toFixed(1)} km away`;
+}
+
+// NYC's inspection cycle is roughly annual; past ~18 months without a new
+// inspection is unusually overdue and worth flagging.
+const FRESHNESS_OVERDUE_DAYS = 545;
+function fmtFreshness(dateStr) {
+  if (!dateStr) return '';
+  const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  if (isNaN(days) || days < 0) return '';
+  if (days >= FRESHNESS_OVERDUE_DAYS) return 'Inspection overdue';
+  if (days === 0) return 'Inspected today';
+  if (days === 1) return 'Inspected 1 day ago';
+  if (days < 60) return `Inspected ${days} days ago`;
+  const months = Math.floor(days / 30);
+  return `Inspected ${months} month${months > 1 ? 's' : ''} ago`;
 }
 
 // Haversine distance in meters.
@@ -442,6 +465,22 @@ function violationsHtml(violations) {
   return '<details class="viols"><summary class="viols-summary">' + htmlEsc(countLabel) + '</summary><div class="viols-body">' + items + '</div></details>';
 }
 
+// Compares the two most recent inspections' scores (lower = better) to show
+// whether the restaurant is trending cleaner or dirtier.
+function trendHtml(history) {
+  if (!history || history.length < 2) return '';
+  const cur = parseInt(history[0].score);
+  const prev = parseInt(history[1].score);
+  if (isNaN(cur) || isNaN(prev)) return '';
+  const diff = Math.abs(cur - prev);
+  const ptsLabel = diff ? ` (${diff} pt${diff > 1 ? 's' : ''})` : '';
+  let cls, arrow, label;
+  if (cur < prev) { cls = 'trend-up'; arrow = '▲'; label = 'Improving'; }
+  else if (cur > prev) { cls = 'trend-down'; arrow = '▼'; label = 'Declining'; }
+  else { cls = 'trend-flat'; arrow = '▬'; label = 'No change'; }
+  return '<div class="trend ' + cls + '"><span class="trend-arrow">' + arrow + '</span> ' + label + ptsLabel + ' since previous inspection</div>';
+}
+
 function historyHtml(history) {
   if (!history || history.length < 2) return '';
   const rows = history.map(r => {
@@ -472,6 +511,8 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
   const scoreBar = scoreBarHtml(graded ? graded.score : latest.score, grade);
   const metaParts = [];
   if (dist != null) metaParts.push(htmlEsc(fmtDist(dist)));
+  const fresh = fmtFreshness(latest.inspection_date);
+  if (fresh) metaParts.push('<span class="freshness' + (fresh === 'Inspection overdue' ? ' freshness-overdue' : '') + '">' + htmlEsc(fresh) + '</span>');
   if (info.cuisine_description) metaParts.push(htmlEsc(info.cuisine_description));
   if (info.phone) metaParts.push('<a href="tel:+1' + htmlEsc(String(info.phone).replace(/\D/g, '')) + '">' + htmlEsc(fmtPhone(info.phone)) + '</a>');
   // Review/booking links: a name+address place search lands on the Google place card
@@ -493,6 +534,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + '<div class="detail">' + gradeLine + '</div>'
     + ctx
     + scoreBar
+    + trendHtml(history)
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
     + violationsHtml(violations)
     + historyHtml(history)

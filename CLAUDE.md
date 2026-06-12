@@ -419,10 +419,10 @@ The `<script>` is organised into labelled sections:
 | Section | Key functions |
 |---|---|
 | Config & DOM | constants, cached element refs |
-| Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone`, `fmtDist`, `distM` |
+| Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone`, `fmtDist`, `fmtFreshness`, `distM` |
 | NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (with corsproxy.io fallback) |
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
-| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
+| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `trendHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
 | Search | `search`, `searchNearby` |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Recently searched | `loadRecent`, `saveRecent`, `renderRecent` (localStorage-backed search history) |
@@ -550,6 +550,30 @@ category label**, never a broken card. Because the sandbox can't reach the CSV (
 agent couldn't fetch the raw file either — the column names are from search snippets, not a direct
 read), **the live rendering of `.viol-cat` is unverified** and must be confirmed on the deployed
 page; if the real CSV's columns differ, tighten `parseViolCsv`'s column-matching.
+
+---
+
+## Trend indicator & inspection freshness (v1.24.0)
+
+Two more pure client-side derivations from data the app already has, both motivated by a
+June 2026 research run on making the page more useful at a glance:
+
+1. **Trend indicator.** `trendHtml(history)` compares `history[0].score` (most recent
+   inspection) against `history[1].score` (the one before it) — `history` is already sorted
+   newest-first by `groupByRestaurant`. Lower score is better, so a decrease renders
+   `▲ Improving (N pts) since previous inspection` in green (`.trend-up`, `var(--B)`), an
+   increase renders `▼ Declining (N pts) …` in orange (`.trend-down`, `var(--C)`), and an
+   unchanged score renders `▬ No change …` in grey (`.trend-flat`, `var(--muted)`). Returns
+   `''` when `history.length < 2` (same guard as `historyHtml`) or either score is
+   non-numeric. Rendered in `cardHtml` directly after the score bar.
+
+2. **Inspection freshness chip.** `fmtFreshness(latest.inspection_date)` (in "Small helpers")
+   computes days since the most recent inspection of any type. NYC's inspection cycle is
+   roughly annual, so `FRESHNESS_OVERDUE_DAYS` (545, ~18 months) without a new inspection is
+   unusually overdue and surfaced as `Inspection overdue` (styled `.freshness-overdue`,
+   `var(--C)`, bold). Otherwise renders `Inspected today` / `Inspected 1 day ago` / `Inspected
+   N days ago` (< 60 days) / `Inspected N month(s) ago`. Rendered as the first item in
+   `cardHtml`'s `.meta` line (before distance/cuisine/phone/review links).
 
 ---
 
@@ -704,7 +728,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (53 cases, 202 assertions — all must pass):**
+**Required test cases (55 cases, 222 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -769,6 +793,10 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 51 | Address-based chain disambiguation | Resolved short link's address narrows 2 same-name DOHMH matches to 1 card; status notes "matched by address"; placard hero shown; `.addr` matches the address-hint location |
 | 52 | Recently-searched list | empty on first load; successful search adds a `.recent-chip` with the searched name; persists across reload (localStorage); clicking a chip refills `#q` and re-searches; "Clear recent" empties the list |
 | 53 | `&` in name extracted from `?q=` URL | `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` resolves directly (no resolver calls); `#q`/`.name` show "MUTEKI UDON & RAMEN" |
+| 54 | Trend indicator — improving | two-inspection history, latest score lower than previous → `.trend.trend-up` present, text includes "Improving" and "(N pts)" |
+| 54b | Trend hidden for single inspection | `history.length < 2` → no `.trend` element |
+| 55 | Inspection freshness chip — today | row with `inspection_date` = now → `.meta .freshness` text === "Inspected today" |
+| 55b | Inspection freshness chip — overdue | row with `inspection_date` far in the past → `.meta .freshness.freshness-overdue` text === "Inspection overdue" |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -807,6 +835,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the address-disambiguation test (test 51, v1.22.0): mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' })` (microlink/jina as `E`), and `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])` where both fixtures share `dba: 'MAZZAT'` but differ in `camis`/`building`/`street`/`boro`/`zipcode` — `MAZZAT_A` (`building:'247', street:'SMITH ST', boro:'Brooklyn', zipcode:'11231'`) matches the resolved address; `MAZZAT_B` (`building:'500', street:'ATLANTIC AVE', boro:'Brooklyn', zipcode:'11217'`) does not. Trigger the short link via `triggerMaps`, wait for `.card`, then assert exactly 1 `.card`, `#status` includes "matched by address", `.placard-wrap` is present (hero shown for the narrowed single result), and `.addr` includes "SMITH ST".
 - For the recently-searched test (test 52, v1.23.0): plain DOHMH search with `J([MAZZAT])`. Assert `#recent` is empty (`innerHTML.trim() === ''`) before any search. Search for `MAZZAT`, wait for `.recent-chip`, assert its `textContent === 'MAZZAT'`. Reload the page and assert the chip still shows `MAZZAT` (proves `localStorage` persistence). Clear `#q`, click `.recent-chip`, wait for `.card`, and assert `#q` is refilled with `MAZZAT`. Click `.recent-clear` and assert `#recent` is empty again.
 - For the `&`-in-name test (test 53, v1.23.1): trigger `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` via `triggerMaps`. Mock `mapu.retiolus.net`/`microlink.io`/`jina.ai` as always-fail (`E`) — `nameFromUrl` should resolve `?q=` directly without any resolver call. Mock `43nn-pn8j` to `J([mkRow({ dba: 'MUTEKI UDON & RAMEN' })])`. Wait for `.card`, then assert `#q` (uppercased) `=== 'MUTEKI UDON & RAMEN'` and `.name === 'MUTEKI UDON & RAMEN'` — proves `isName`'s reject-regex no longer rejects names containing `&`.
+- For the trend tests (tests 54/54b, v1.24.0): plain DOHMH search. Test 54 mocks two rows sharing `camis`/`dba`, distinct `inspection_date`s — newest with `score:'5'`, older with `score:'20'`. `groupByRestaurant` sorts `history` newest-first, so `history[0].score (5) < history[1].score (20)` → improving. Assert `.trend.trend-up` present and its text includes `Improving` and `(15 pts)`. Test 54b mocks a single row (`J([MAZZAT])`) — `history.length < 2` → assert `.trend` is absent.
+- For the freshness tests (tests 55/55b, v1.24.0): plain DOHMH search. Test 55 mocks a row with `inspection_date: new Date().toISOString()` (today, computed at test-run time so it's always "now") — assert `.meta .freshness` present and `textContent === 'Inspected today'`. Test 55b mocks a row with `inspection_date: '2018-01-01T00:00:00.000'` (always > `FRESHNESS_OVERDUE_DAYS` old) — assert `.meta .freshness.freshness-overdue` present and `textContent === 'Inspection overdue'`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -897,7 +927,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.23.1**
+Current: **v1.24.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -940,6 +970,7 @@ Notable versions:
 - v1.22.0 — address-based chain disambiguation: `splitPlace`/`parseShare`/`resolveMapsLink` now also return the raw address remainder (`addr`) alongside name/borough; `onMapsLink`/`onShare` pass it to `search(addressHint)` → `render(rows, name, originalName, addressHint)`. When a search returns multiple same-name DOHMH matches and an `addressHint` is available, `scoreAddressMatch(addr, info)` scores each match (building-number exact match = +2, street-name-token overlap = +1) and — only when there's a single clear winner with score > 0 — narrows to that one restaurant, showing the hero placard with a "· matched by address" status note; otherwise falls back unchanged to showing all matches. Fixed a latent bug where `btn.addEventListener('click', search)` passed the click `MouseEvent` as `search`'s `addressHint` argument, breaking `scoreAddressMatch`'s `.toUpperCase()` on every manual search — now wrapped in `() => search()`. Test 51 added (51 cases, 192 assertions)
 - v1.23.0 — "Resy ↗" review link added alongside Map/Yelp (`resy.com/cities/ny/venues?query=NAME`); since the Amex Resy credit applies to any Resy "Pay at Restaurant" purchase (no separate curated list), a Resy search link is the cheap way to surface that without scraping Resy's API-less site. Also adds a `#recent` "recently searched" chip list (localStorage-backed, last 6 searches, click to re-search, "Clear recent" to reset) — `search()` now calls `saveRecent(name, loc)` on any successful render, covering manual searches, deep links, and resolved Maps/share links. Test 50 updated, test 52 added (52 cases, 199 assertions)
 - v1.23.1 — fixed `isName`'s reject-regex (`nameFromUrl`, `cleanTitle`, `parseShare`) rejecting any name containing `&` — restaurants like "Muteki Udon & Ramen" failed with "Couldn't find a restaurant name in this link" even though `?q=Muteki+Udon+%26+Ramen` resolves the name with zero network calls. The `&` check was redundant: it was meant to reject tracking-param garbage (`?g_st=ic`), which the existing `?`/`=` checks already catch. Regex narrowed from `/[?=&]/` to `/[?=]/` in all three call sites. Test 53 added (53 cases, 202 assertions)
+- v1.24.0 — two new card features from a June 2026 research run: a `.trend` indicator (`trendHtml`) comparing the two most recent inspection scores (lower = better) — ▲ "Improving (N pts)" in green, ▼ "Declining (N pts)" in orange, or ▬ "No change", shown after the score bar whenever ≥2 inspections exist; and an "inspection freshness" chip (`fmtFreshness`) as the first item in `.meta` — "Inspected today/N days/N month(s) ago", or "Inspection overdue" past `FRESHNESS_OVERDUE_DAYS` (545 days, ~18 months) without a new inspection. Both are pure client-side derivations from data the app already fetches. Tests 54–55b added (55 cases, 222 assertions)
 
 ## Known-good Maps parsing baseline
 
