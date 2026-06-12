@@ -155,8 +155,10 @@ splitPlace(name, boro)    — splits "Name, 123 St, Brooklyn, NY 11231" on first
                             falling back to a 5-digit ZIP (v1.17.0) when no
                             borough name is found
         ↓
-{ name, boro }            — name → #q input, boro → #loc input (boro may hold
-                            either a borough name or a ZIP — #loc/buildUrl accept both)
+{ name, boro, addr }      — name → #q input, boro → #loc input (boro may hold
+                            either a borough name or a ZIP — #loc/buildUrl accept both),
+                            addr → the raw "123 St, Brooklyn, NY 11231" remainder
+                            (v1.22.0), passed through to search() as an address hint
 ```
 
 `cleanTitle(raw)` strips " - Google Maps" suffix and rejects empty, Google-only,
@@ -248,6 +250,35 @@ renders it as the first item in the `.meta` line (`"120 m away"` or `"1.2 km
 away"`). Geolocation errors are surfaced via `setError`: permission-denied
 (`code === 1`) gets a specific message; other errors (including timeout)
 suggest opening the site in Safari instead of the home-screen app.
+
+### Address-based chain disambiguation (v1.22.0)
+
+A resolved Maps link or `?share=` payload often carries a full address
+(`splitPlace`'s `addr` remainder, e.g. `"247 Smith St, Brooklyn, NY 11231"`),
+but `search()` only matches on `dba`/`loc` — a chain with multiple NYC
+locations (e.g. several "MAZZAT" branches) returns multiple same-name rows
+with no way to tell which one the user actually shared.
+
+`onMapsLink()` and `onShare()` now pass the parsed `addr` to `search(addressHint)`,
+which threads it to `render(rows, name, originalName, addressHint)`. When
+`render` sees more than one group **and** an `addressHint`, it scores every
+group via `scoreAddressMatch(addr, info)`:
+
+- exact match between the address's leading number and `info.building` → **+2**
+- any address word (≥3 chars, with `ST`/`AVE`/`RD`/etc. suffixes stripped)
+  found as a substring of `info.street` → **+1**
+
+If there is a single group with the strictly highest score (and that score is
+> 0), `render` narrows to just that group — showing the hero placard as if it
+were the only match — and appends `· matched by address` to the status line.
+Any tie, or a zero top score, falls back unchanged to showing all groups. This
+is a **ranking signal, not a query filter**: DOHMH street abbreviations
+("AVE" vs "Avenue") make a strict SoQL match unreliable, so disambiguation
+happens client-side after the existing name-only query.
+
+A plain manual search (`#go` click, Enter key) passes no `addressHint`
+(`addressHint === undefined`), so `scoreAddressMatch` is never invoked and
+multi-result behavior is unchanged for that path.
 
 ---
 
@@ -369,7 +400,7 @@ The `<script>` is organised into labelled sections:
 | Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone`, `fmtDist`, `distM` |
 | NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (with corsproxy.io fallback) |
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
-| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `render` |
+| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
 | Search | `search`, `searchNearby` |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Wiring | `onMapsLink` (with auto-retry), `onShare` (name-first share-payload handler), event listeners, deep-link init on load |
@@ -650,7 +681,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (50 cases, 188 assertions — all must pass):**
+**Required test cases (51 cases, 192 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -712,6 +743,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 48b | Near me falls back to lat/lng bounding box when `within_circle` 400s | `within_circle` attempted first; fallback query has `latitude >`/`latitude <`; card shown via bbox |
 | 49 | Near me — geolocation permission denied | mocked `getCurrentPosition` error code 1; DOHMH never called; error mentions "permission denied" |
 | 50 | Review links (Google place search + Yelp) on card meta | Map link href includes `google.com/maps/search/?api=1`, decoded query has name + street; Yelp link href includes `yelp.com/search`, decoded has `find_desc=` name and street in `find_loc` |
+| 51 | Address-based chain disambiguation | Resolved short link's address narrows 2 same-name DOHMH matches to 1 card; status notes "matched by address"; placard hero shown; `.addr` matches the address-hint location |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -747,6 +779,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`). Test 47b's payload is the bare text `Invalid Dynamic Link` (a Firebase error-page title — iOS coercing a URL-only share payload to text can fetch the link's page title, and the g_st-poisoned short link serves Firebase's error page). `parseShare` rejects `JUNK_TITLE` matches as names; with no URL either, `onShare` shows the "Couldn't read the shared content" status and never queries DOHMH (mock `43nn-pn8j` with a hit-flag handler and assert it stays false, `#q` stays empty).
 - For the near-me tests (48/48b/49, v1.20.0): mock `navigator.geolocation.getCurrentPosition` via `page.addInitScript` (must run before `goto` on `file://` pages) — e.g. `navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 40.68, longitude: -73.99 } })` for success, or `(ok, err) => err({ code: 1, message: 'denied' })` for test 49. Click `#near` (not `#go`) and `waitForSelector('.card')` or `waitErr`. Test 48: mock `43nn-pn8j` to return two fixtures with `latitude`/`longitude` at different distances from the mocked position; assert the captured `$where` (decoded) includes `within_circle`, the nearer restaurant's card is first, status mentions `within 300`, and `.meta` includes "m away". Test 48b: have the `43nn-pn8j` mock return HTTP 400 when the URL contains `within_circle` and 200 otherwise; assert the bbox fallback fires and its `$where` (after replacing `+` with a space before `decodeURIComponent`, since `+` isn't decoded by `decodeURIComponent`) includes `latitude >`. Test 49: assert DOHMH is never called and the error message mentions "permission denied".
 - For the review-links test (test 50, v1.21.0): plain DOHMH search with `J([MAZZAT])`. Both links are built with `encodeURIComponent` (spaces become `%20`, recovered by `decodeURIComponent` — unlike the `+` from `URLSearchParams` elsewhere). Assert the Map link: `.meta a[href*="google.com/maps/search"]` exists, its href includes `api=1`, and its decoded href includes `MAZZAT` and `MAIN ST` (name + street in the query). Assert the Yelp link: `.meta a[href*="yelp.com/search"]` exists, its decoded href includes `find_desc=MAZZAT` and `MAIN ST` (street in `find_loc`). Both render whenever `dba` is present — no coordinates required.
+- For the address-disambiguation test (test 51, v1.22.0): mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' })` (microlink/jina as `E`), and `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])` where both fixtures share `dba: 'MAZZAT'` but differ in `camis`/`building`/`street`/`boro`/`zipcode` — `MAZZAT_A` (`building:'247', street:'SMITH ST', boro:'Brooklyn', zipcode:'11231'`) matches the resolved address; `MAZZAT_B` (`building:'500', street:'ATLANTIC AVE', boro:'Brooklyn', zipcode:'11217'`) does not. Trigger the short link via `triggerMaps`, wait for `.card`, then assert exactly 1 `.card`, `#status` includes "matched by address", `.placard-wrap` is present (hero shown for the narrowed single result), and `.addr` includes "SMITH ST".
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -831,7 +864,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.21.0**
+Current: **v1.22.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -871,6 +904,7 @@ Notable versions:
 - v1.19.2 — iOS tip's Install Shortcut button now links the proven 7-action Expand-URL shortcut (icloud.com/shortcuts/15ee0520647c4598a2da68b9d3070e6c), replacing the old 4-action ?maps= version
 - v1.20.0 — "📍 Graded restaurants near me" button (`#near`), fired only on explicit tap (never on load, to avoid the iOS standalone-PWA geolocation-prompt hang); `searchNearby()` queries `43nn-pn8j` via `buildNearbyUrl` using `within_circle(location_point1, …)` with a lat/lng bounding-box fallback if that 400s; results within 300 m sorted nearest-first (capped at 25), each card's `.meta` line shows distance via `fmtDist`/`distM` (Haversine); tests 48–49 added (49 cases, 188 assertions)
 - v1.21.0 — review links on every card: "Map ↗" upgraded from a bare `?q=LAT,LNG` coordinate pin to a `google.com/maps/search/?api=1&query=NAME ADDRESS` place search (lands on the Google place card with rating/reviews), plus a new "Yelp ↗" link (`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`); link-out chosen over inline Yelp data because the Fusion API is paid-only for reviews (Plus plan), returns just 3 truncated excerpts, and blocks browser calls (no CORS) — inline would need a key + Worker proxy; test 38 updated, test 50 added (50 cases, 188 assertions)
+- v1.22.0 — address-based chain disambiguation: `splitPlace`/`parseShare`/`resolveMapsLink` now also return the raw address remainder (`addr`) alongside name/borough; `onMapsLink`/`onShare` pass it to `search(addressHint)` → `render(rows, name, originalName, addressHint)`. When a search returns multiple same-name DOHMH matches and an `addressHint` is available, `scoreAddressMatch(addr, info)` scores each match (building-number exact match = +2, street-name-token overlap = +1) and — only when there's a single clear winner with score > 0 — narrows to that one restaurant, showing the hero placard with a "· matched by address" status note; otherwise falls back unchanged to showing all matches. Fixed a latent bug where `btn.addEventListener('click', search)` passed the click `MouseEvent` as `search`'s `addressHint` argument, breaking `scoreAddressMatch`'s `.toUpperCase()` on every manual search — now wrapped in `() => search()`. Test 51 added (51 cases, 192 assertions)
 
 ## Known-good Maps parsing baseline
 

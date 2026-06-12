@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 50 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 51 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 50-case Playwright test suite, fix any failures, and confirm 188/188 assertions pass.
+Run the full 51-case Playwright test suite, fix any failures, and confirm 192/192 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 50 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 51 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `188 tests: 188 passed, 0 failed`
+Expected output ends with: `192 tests: 192 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -326,6 +326,28 @@ Plain DOHMH search with `J([MAZZAT])`. `cardHtml` builds both links with
 - `.meta a[href*="yelp.com/search"]` exists and its decoded href includes
   `find_desc=MAZZAT` and `MAIN ST` (street inside `find_loc`)
 Both links render whenever `dba` is present — no coordinates required.
+
+### Address-based chain disambiguation (test 51, v1.22.0)
+Two same-name DOHMH fixtures sharing `dba: 'MAZZAT'` but different `camis`/`building`/
+`street`/`boro`/`zipcode`:
+```js
+const MAZZAT_A = mkRow({ camis: '2', dba: 'MAZZAT', building: '247', street: 'SMITH ST', boro: 'Brooklyn', zipcode: '11231' });
+const MAZZAT_B = mkRow({ camis: '31', dba: 'MAZZAT', building: '500', street: 'ATLANTIC AVE', boro: 'Brooklyn', zipcode: '11217' });
+```
+Mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' })`
+(microlink/jina → `E`), and `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`. Trigger the short
+link via `triggerMaps`, wait for `.card`, then assert: exactly 1 `.card`, `#status`
+includes `matched by address`, `.placard-wrap` is present (hero shown for the narrowed
+single result), and `.addr` text includes `SMITH ST` (proving `MAZZAT_A`, whose
+`building`/`street` match the resolved address, won over `MAZZAT_B`).
+
+### Click-handler regression guard (v1.22.0)
+`#go`'s click listener must be `() => search()`, not bare `search`. Passing the
+listener directly makes the click `MouseEvent` become `search`'s `addressHint`
+argument, and `scoreAddressMatch`'s `addr.toUpperCase()` throws on a `MouseEvent`,
+breaking every manual search (tests 5b/31 etc. would time out waiting for `.card`).
+If a future change reintroduces this, those multi-result tests will fail with
+"addr.toUpperCase is not a function" surfaced via `setError`.
 
 ## Step 4 — Iterate
 

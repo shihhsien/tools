@@ -187,7 +187,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.21.0</div>
+<div class="ver">v1.22.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -514,16 +514,44 @@ function placardHtml(grade) {
     </div>`;
 }
 
+// Score how well a restaurant's building/street matches a free-form address
+// string (e.g. "247 Smith St, Brooklyn, NY 11231" from a resolved Maps link).
+// Used only to disambiguate same-named chain locations — DOHMH street
+// abbreviations ("AVE" vs "Avenue") make a strict match unreliable, so this
+// is a ranking signal, not a query filter.
+function scoreAddressMatch(addr, info) {
+  if (!addr) return 0;
+  const a = addr.toUpperCase();
+  let score = 0;
+  const num = (a.match(/^\s*(\d+)/) || [])[1];
+  if (num && info.building && info.building.trim() === num) score += 2;
+  const streetWords = a.replace(/^\s*\d+\s*/, '').split(',')[0]
+    .replace(/\b(ST|STREET|AVE|AVENUE|RD|ROAD|BLVD|BOULEVARD|PL|PLACE|DR|DRIVE)\b\.?/g, '')
+    .split(/\s+/).map(w => w.trim()).filter(w => w.length >= 3);
+  const infoStreet = (info.street || '').toUpperCase();
+  if (streetWords.some(w => infoStreet.includes(w))) score += 1;
+  return score;
+}
+
 // Returns the number of restaurants rendered (0 on no results), so callers
 // like onShare can fall back to URL resolution when a name search finds nothing.
-function render(rows, name, originalName) {
-  const groups = groupByRestaurant(rows);
+// `addressHint`, when given, narrows multiple same-name matches down to the one
+// whose building/street best matches it (e.g. resolving a chain to one location).
+function render(rows, name, originalName, addressHint) {
+  let groups = groupByRestaurant(rows);
   if (!groups.length) {
     setStatus(`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`);
     resultsEl.innerHTML = '';
     return 0;
   }
-  const note = originalName ? ` · shortened from "${originalName}"` : '';
+  let note = originalName ? ` · shortened from "${originalName}"` : '';
+  if (groups.length > 1 && addressHint) {
+    const scored = groups.map(g => ({ g, score: scoreAddressMatch(addressHint, g.info) })).sort((a, b) => b.score - a.score);
+    if (scored[0].score > 0 && scored[0].score > (scored[1]?.score ?? 0)) {
+      groups = [scored[0].g];
+      note = ' · matched by address';
+    }
+  }
   setStatus(`${groups.length} match(es) · official data${note}`);
   const hero = groups.length === 1 ? placardHtml(groups[0].graded?.grade ?? null) : '';
   resultsEl.innerHTML = hero + groups.map(cardHtml).join('');
@@ -531,7 +559,7 @@ function render(rows, name, originalName) {
 }
 
 // ---- Search -----------------------------------------------------------
-async function search() {
+async function search(addressHint) {
   const normalize = s => s.replace(/[‘’′]/g, "'");
   const originalDisplay = normalize(nameInput.value.trim()).toUpperCase();
   const loc  = normalize(locInput.value.trim()).replace(/'/g, "''");
@@ -554,7 +582,7 @@ async function search() {
       const groups = groupByRestaurant(rows);
       dbg(`search: got ${groups.length} result(s)`);
       if (groups.length > 0 || len === 1) {
-        return render(rows, displayName, len < words.length ? originalDisplay : null);
+        return render(rows, displayName, len < words.length ? originalDisplay : null, addressHint);
       }
     }
   } catch (e) {
@@ -665,12 +693,14 @@ function boroFromAddr(addr) {
 // Resolvers may return "Name, 123 St, Brooklyn, NY 11231" — keep the name, mine
 // the rest for a borough name, falling back to a 5-digit ZIP when no borough is
 // found. #loc accepts either via buildUrl's `boro like` / `zipcode=` clauses.
+// `addr` (the raw "123 St, Brooklyn, NY 11231" remainder) is returned too, for
+// disambiguating same-named chain locations in render().
 function splitPlace(name, boro) {
-  if (!name.includes(',')) return { name, boro };
+  if (!name.includes(',')) return { name, boro, addr: '' };
   const [first, ...rest] = name.split(',');
-  const addr = rest.join(',');
+  const addr = rest.join(',').trim();
   const zip = (addr.match(/\b\d{5}\b/) || [])[0] || '';
-  return { name: first.trim(), boro: boro || boroFromAddr(addr) || zip };
+  return { name: first.trim(), boro: boro || boroFromAddr(addr) || zip, addr };
 }
 
 // Parse a raw share-sheet payload (?share= deep link). Google Maps' iOS share
@@ -686,14 +716,15 @@ function parseShare(text) {
     .replace(/\s*[·|-]\s*google maps\s*$/i, '')
     .replace(/[!.\s]+$/, '')
     .trim();
-  let boro = '';
-  if (name.includes(',')) ({ name, boro } = splitPlace(name, ''));
+  let boro = '', addr = '';
+  if (name.includes(',')) ({ name, boro, addr } = splitPlace(name, ''));
   const rest = lines.slice(1).join(', ');
+  addr = addr || rest;
   boro = boro || boroFromAddr(rest) || ((rest.match(/\b\d{5}\b/) || [])[0] || '');
   // Junk filter: iOS coercing a URL-only payload to text can fetch the link's
   // page title — for a g_st-poisoned short link that's Firebase's error-page
   // title ("Invalid Dynamic Link"), not a restaurant name.
-  return { name: isName(name) && !JUNK_TITLE.test(name) ? name : '', boro, url };
+  return { name: isName(name) && !JUNK_TITLE.test(name) ? name : '', boro, addr, url };
 }
 
 function timeoutFetch(url, opts, ms = 6000) {
@@ -772,11 +803,11 @@ async function onMapsLink() {
     dbg(`attempt ${attempt}/2`);
     setStatus(attempt === 1 ? 'Resolving Maps link…' : 'Retrying…');
     try {
-      const { name, boro } = await resolveMapsLink(url);
+      const { name, boro, addr } = await resolveMapsLink(url);
       nameInput.value = name;
       if (boro) locInput.value = boro;
       mapsInput.value = '';
-      await search();
+      await search(addr);
       return;
     } catch (e) {
       if (attempt < 2) continue;
@@ -796,12 +827,12 @@ loadViolCodes();   // prime the violation-code reference in the background
 // name directly when the payload carries one; resolve the Maps URL only as a
 // fallback (name missing, or name search found nothing).
 async function onShare(raw) {
-  const { name, boro, url } = parseShare(raw);
+  const { name, boro, addr, url } = parseShare(raw);
   dbg(`share payload: name="${name}" boro="${boro}" url="${url.slice(0, 60)}"`);
   if (name) {
     nameInput.value = name;
     if (boro) locInput.value = boro;
-    const found = await search();
+    const found = await search(addr);
     if (found || !url) return;
     dbg('share: name search found nothing — falling back to URL resolution');
   }
@@ -809,7 +840,7 @@ async function onShare(raw) {
   if (!name) setStatus("Couldn't read the shared content. Type the restaurant name above.");
 }
 
-btn.addEventListener('click', search);
+btn.addEventListener('click', () => search());
 nearBtn.addEventListener('click', searchNearby);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
