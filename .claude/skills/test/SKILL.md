@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 51 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 52 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 51-case Playwright test suite, fix any failures, and confirm 192/192 assertions pass.
+Run the full 52-case Playwright test suite, fix any failures, and confirm 199/199 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 51 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 52 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `192 tests: 192 passed, 0 failed`
+Expected output ends with: `199 tests: 199 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -317,15 +317,16 @@ throws `SecurityError` on `file://` pages.
   aborts. Click `#near`, `waitErr(p)`. Assert the hit-flag stayed false and `#status` text
   includes `permission denied`.
 
-### Review-links test (test 50, v1.21.0)
-Plain DOHMH search with `J([MAZZAT])`. `cardHtml` builds both links with
+### Review-links test (test 50, v1.21.0, updated v1.23.0)
+Plain DOHMH search with `J([MAZZAT])`. `cardHtml` builds all three links with
 `encodeURIComponent` (spaces → `%20`, recovered by `decodeURIComponent` — unlike the
 `+` that `URLSearchParams` produces elsewhere). Assert:
 - `.meta a[href*="google.com/maps/search"]` exists, its `href` includes `api=1`, and its
   decoded href includes `MAZZAT` and `MAIN ST` (name + street in the place-search query)
 - `.meta a[href*="yelp.com/search"]` exists and its decoded href includes
   `find_desc=MAZZAT` and `MAIN ST` (street inside `find_loc`)
-Both links render whenever `dba` is present — no coordinates required.
+- `.meta a[href*="resy.com"]` exists and its decoded href includes `MAZZAT`
+All three links render whenever `dba` is present — no coordinates required.
 
 ### Address-based chain disambiguation (test 51, v1.22.0)
 Two same-name DOHMH fixtures sharing `dba: 'MAZZAT'` but different `camis`/`building`/
@@ -348,6 +349,22 @@ argument, and `scoreAddressMatch`'s `addr.toUpperCase()` throws on a `MouseEvent
 breaking every manual search (tests 5b/31 etc. would time out waiting for `.card`).
 If a future change reintroduces this, those multi-result tests will fail with
 "addr.toUpperCase is not a function" surfaced via `setError`.
+
+### Recently-searched list (test 52, v1.23.0)
+Plain DOHMH search with `J([MAZZAT])`. Sequence:
+1. Before any search, `#recent` is empty: `(await p.$eval('#recent', el => el.innerHTML.trim())) === ''`.
+2. Fill `#q` with `MAZZAT`, click `#go`, wait for `.card`, then `waitForSelector('.recent-chip')`
+   (the chip render happens synchronously inside `search()`'s success path but waiting is
+   cheap insurance) — assert its `textContent === 'MAZZAT'`.
+3. `page.reload({ waitUntil: 'load' })`, wait for `.recent-chip` again, assert it still
+   reads `MAZZAT` — proves `localStorage['recent-searches']` persistence across loads.
+4. Clear `#q`, click `.recent-chip`, wait for `.card`, assert `#q` value is now `MAZZAT`
+   (clicking a chip refills the input and re-searches).
+5. Click `.recent-clear`, assert `#recent` is empty again.
+
+`saveRecent` is called from inside `search()`'s success branch, so it fires for manual
+searches, deep links, and resolved Maps/share links alike — no separate mocking needed
+beyond the one DOHMH route.
 
 ## Step 4 — Iterate
 

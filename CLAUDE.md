@@ -97,15 +97,20 @@ These are separate because an inspection can happen without issuing a new grade.
 `buildUrl`'s `$select` also fetches `phone`, `cuisine_description`, `nta`, `latitude`,
 `longitude` (v1.16.0) — present on `43nn-pn8j` but previously unused. `cardHtml` renders
 these (when non-empty) in a `.meta` line under the address: cuisine type as plain text,
-phone as a `tel:` link formatted via `fmtPhone()` (`(212) 555-1234`), and two review
-links (v1.21.0) built from name+address whenever `dba` is present: "Map ↗" →
+phone as a `tel:` link formatted via `fmtPhone()` (`(212) 555-1234`), and three review/
+booking links built from name+address whenever `dba` is present: "Map ↗" (v1.21.0) →
 `google.com/maps/search/?api=1&query=NAME ADDRESS` (a place search that lands on the
 Google place card with its rating/reviews — replaced the old bare `?q=LAT,LNG`
-coordinate pin, which selected nothing) and "Yelp ↗" →
-`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`. The link-out approach is deliberate:
+coordinate pin, which selected nothing), "Yelp ↗" (v1.21.0) →
+`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`, and "Resy ↗" (v1.23.0) →
+`resy.com/cities/ny/venues?query=NAME`. The link-out approach is deliberate:
 Yelp's Fusion API has no free tier (reviews need the paid Plus plan), returns only 3
 truncated excerpts, and blocks browser calls (no CORS) by design — so inline Yelp data
-would need a paid key plus a Worker proxy for 3 snippets. Dataset coordinates are now
+would need a paid key plus a Worker proxy for 3 snippets; Resy has no public API at
+all. The Resy link doubles as an Amex-Resy-credit check — the credit applies to any
+restaurant taken via Resy's "Pay at Restaurant" feature (no separate curated list), so
+"is this place on Resy" is the only signal that matters, and a search link is enough
+to answer that without scraping. Dataset coordinates are now
 used only for the nearby-search distance math. `nta` (neighborhood) is fetched but not
 yet displayed — reserved for a future enrichment.
 
@@ -280,6 +285,23 @@ A plain manual search (`#go` click, Enter key) passes no `addressHint`
 (`addressHint === undefined`), so `scoreAddressMatch` is never invoked and
 multi-result behavior is unchanged for that path.
 
+### Recently searched (v1.23.0)
+
+A `#recent` chip list below the Maps-link input shows the last `RECENT_MAX`
+(6) successful searches, most-recent-first, persisted in `localStorage` under
+`recent-searches` as `[{ name, loc }, ...]`. `search()` calls `saveRecent(name,
+loc)` whenever `render()` returns a non-zero group count — covering manual
+searches, deep links, and resolved Maps/share links alike, since they all funnel
+through `search()`. `saveRecent` dedupes on exact `name`+`loc` (case-sensitive,
+since `name` is already uppercased) and caps the list before re-rendering.
+
+Clicking a `.recent-chip` refills `#q`/`#loc` and re-runs `search()`; a
+"Clear recent" button (rendered alongside the chips, only when the list is
+non-empty) removes the `localStorage` key. All rendering goes through `htmlEsc`.
+This is purely local/client-side — no new network dependency — and is the
+underlying motivation for the v1.23.0 "Resy ↗" review link (below): both let
+the user quickly act on a place they've already looked up.
+
 ---
 
 ## Address extraction from resolved Maps links (research note)
@@ -403,6 +425,7 @@ The `<script>` is organised into labelled sections:
 | Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
 | Search | `search`, `searchNearby` |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
+| Recently searched | `loadRecent`, `saveRecent`, `renderRecent` (localStorage-backed search history) |
 | Wiring | `onMapsLink` (with auto-retry), `onShare` (name-first share-payload handler), event listeners, deep-link init on load |
 
 ---
@@ -681,7 +704,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (51 cases, 192 assertions — all must pass):**
+**Required test cases (52 cases, 199 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -742,8 +765,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 48 | Near me — `within_circle` query, sorted nearest first | `#near` clicked; mocked geolocation; query has `within_circle`; 2 cards, nearest first; status mentions radius; card `.meta` shows distance |
 | 48b | Near me falls back to lat/lng bounding box when `within_circle` 400s | `within_circle` attempted first; fallback query has `latitude >`/`latitude <`; card shown via bbox |
 | 49 | Near me — geolocation permission denied | mocked `getCurrentPosition` error code 1; DOHMH never called; error mentions "permission denied" |
-| 50 | Review links (Google place search + Yelp) on card meta | Map link href includes `google.com/maps/search/?api=1`, decoded query has name + street; Yelp link href includes `yelp.com/search`, decoded has `find_desc=` name and street in `find_loc` |
+| 50 | Review links (Google place search + Yelp + Resy) on card meta | Map link href includes `google.com/maps/search/?api=1`, decoded query has name + street; Yelp link href includes `yelp.com/search`, decoded has `find_desc=` name and street in `find_loc`; Resy link href includes `resy.com`, decoded includes the restaurant name |
 | 51 | Address-based chain disambiguation | Resolved short link's address narrows 2 same-name DOHMH matches to 1 card; status notes "matched by address"; placard hero shown; `.addr` matches the address-hint location |
+| 52 | Recently-searched list | empty on first load; successful search adds a `.recent-chip` with the searched name; persists across reload (localStorage); clicking a chip refills `#q` and re-searches; "Clear recent" empties the list |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -778,8 +802,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 
 - For the `?share=` tests (tests 46/46b/47, v1.19.0): pass `pageUrl = BASE + '?share=' + encodeURIComponent(payload)` and set up routes in `setup` (load-time resolution). Test 46's payload is `'Mazzat\n247 Smith St, Brooklyn, NY 11231\nhttps://maps.app.goo.gl/TEST'` — assert no resolver route is hit (name wins), `#q` = MAZZAT, `#loc` = BROOKLYN (mined from the address line), card shown. Test 46b's payload is the bare short link — `parseShare` finds no name, so `onShare` routes it to `onMapsLink` (mock mapu → card). Test 47's payload is `'Ghostplace\nhttps://maps.app.goo.gl/TEST'` with a conditional DOHMH mock returning `[]` unless the decoded URL contains MAZZAT — proves the empty name search falls back to URL resolution (`dohmhCalls >= 2`). Test 47b's payload is the bare text `Invalid Dynamic Link` (a Firebase error-page title — iOS coercing a URL-only share payload to text can fetch the link's page title, and the g_st-poisoned short link serves Firebase's error page). `parseShare` rejects `JUNK_TITLE` matches as names; with no URL either, `onShare` shows the "Couldn't read the shared content" status and never queries DOHMH (mock `43nn-pn8j` with a hit-flag handler and assert it stays false, `#q` stays empty).
 - For the near-me tests (48/48b/49, v1.20.0): mock `navigator.geolocation.getCurrentPosition` via `page.addInitScript` (must run before `goto` on `file://` pages) — e.g. `navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 40.68, longitude: -73.99 } })` for success, or `(ok, err) => err({ code: 1, message: 'denied' })` for test 49. Click `#near` (not `#go`) and `waitForSelector('.card')` or `waitErr`. Test 48: mock `43nn-pn8j` to return two fixtures with `latitude`/`longitude` at different distances from the mocked position; assert the captured `$where` (decoded) includes `within_circle`, the nearer restaurant's card is first, status mentions `within 300`, and `.meta` includes "m away". Test 48b: have the `43nn-pn8j` mock return HTTP 400 when the URL contains `within_circle` and 200 otherwise; assert the bbox fallback fires and its `$where` (after replacing `+` with a space before `decodeURIComponent`, since `+` isn't decoded by `decodeURIComponent`) includes `latitude >`. Test 49: assert DOHMH is never called and the error message mentions "permission denied".
-- For the review-links test (test 50, v1.21.0): plain DOHMH search with `J([MAZZAT])`. Both links are built with `encodeURIComponent` (spaces become `%20`, recovered by `decodeURIComponent` — unlike the `+` from `URLSearchParams` elsewhere). Assert the Map link: `.meta a[href*="google.com/maps/search"]` exists, its href includes `api=1`, and its decoded href includes `MAZZAT` and `MAIN ST` (name + street in the query). Assert the Yelp link: `.meta a[href*="yelp.com/search"]` exists, its decoded href includes `find_desc=MAZZAT` and `MAIN ST` (street in `find_loc`). Both render whenever `dba` is present — no coordinates required.
+- For the review-links test (test 50, v1.21.0, updated v1.23.0): plain DOHMH search with `J([MAZZAT])`. All three links are built with `encodeURIComponent` (spaces become `%20`, recovered by `decodeURIComponent` — unlike the `+` from `URLSearchParams` elsewhere). Assert the Map link: `.meta a[href*="google.com/maps/search"]` exists, its href includes `api=1`, and its decoded href includes `MAZZAT` and `MAIN ST` (name + street in the query). Assert the Yelp link: `.meta a[href*="yelp.com/search"]` exists, its decoded href includes `find_desc=MAZZAT` and `MAIN ST` (street in `find_loc`). Assert the Resy link: `.meta a[href*="resy.com"]` exists and its decoded href includes `MAZZAT`. All three render whenever `dba` is present — no coordinates required.
 - For the address-disambiguation test (test 51, v1.22.0): mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' })` (microlink/jina as `E`), and `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])` where both fixtures share `dba: 'MAZZAT'` but differ in `camis`/`building`/`street`/`boro`/`zipcode` — `MAZZAT_A` (`building:'247', street:'SMITH ST', boro:'Brooklyn', zipcode:'11231'`) matches the resolved address; `MAZZAT_B` (`building:'500', street:'ATLANTIC AVE', boro:'Brooklyn', zipcode:'11217'`) does not. Trigger the short link via `triggerMaps`, wait for `.card`, then assert exactly 1 `.card`, `#status` includes "matched by address", `.placard-wrap` is present (hero shown for the narrowed single result), and `.addr` includes "SMITH ST".
+- For the recently-searched test (test 52, v1.23.0): plain DOHMH search with `J([MAZZAT])`. Assert `#recent` is empty (`innerHTML.trim() === ''`) before any search. Search for `MAZZAT`, wait for `.recent-chip`, assert its `textContent === 'MAZZAT'`. Reload the page and assert the chip still shows `MAZZAT` (proves `localStorage` persistence). Clear `#q`, click `.recent-chip`, wait for `.card`, and assert `#q` is refilled with `MAZZAT`. Click `.recent-clear` and assert `#recent` is empty again.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -864,7 +889,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.22.0**
+Current: **v1.23.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -905,6 +930,7 @@ Notable versions:
 - v1.20.0 — "📍 Graded restaurants near me" button (`#near`), fired only on explicit tap (never on load, to avoid the iOS standalone-PWA geolocation-prompt hang); `searchNearby()` queries `43nn-pn8j` via `buildNearbyUrl` using `within_circle(location_point1, …)` with a lat/lng bounding-box fallback if that 400s; results within 300 m sorted nearest-first (capped at 25), each card's `.meta` line shows distance via `fmtDist`/`distM` (Haversine); tests 48–49 added (49 cases, 188 assertions)
 - v1.21.0 — review links on every card: "Map ↗" upgraded from a bare `?q=LAT,LNG` coordinate pin to a `google.com/maps/search/?api=1&query=NAME ADDRESS` place search (lands on the Google place card with rating/reviews), plus a new "Yelp ↗" link (`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`); link-out chosen over inline Yelp data because the Fusion API is paid-only for reviews (Plus plan), returns just 3 truncated excerpts, and blocks browser calls (no CORS) — inline would need a key + Worker proxy; test 38 updated, test 50 added (50 cases, 188 assertions)
 - v1.22.0 — address-based chain disambiguation: `splitPlace`/`parseShare`/`resolveMapsLink` now also return the raw address remainder (`addr`) alongside name/borough; `onMapsLink`/`onShare` pass it to `search(addressHint)` → `render(rows, name, originalName, addressHint)`. When a search returns multiple same-name DOHMH matches and an `addressHint` is available, `scoreAddressMatch(addr, info)` scores each match (building-number exact match = +2, street-name-token overlap = +1) and — only when there's a single clear winner with score > 0 — narrows to that one restaurant, showing the hero placard with a "· matched by address" status note; otherwise falls back unchanged to showing all matches. Fixed a latent bug where `btn.addEventListener('click', search)` passed the click `MouseEvent` as `search`'s `addressHint` argument, breaking `scoreAddressMatch`'s `.toUpperCase()` on every manual search — now wrapped in `() => search()`. Test 51 added (51 cases, 192 assertions)
+- v1.23.0 — "Resy ↗" review link added alongside Map/Yelp (`resy.com/cities/ny/venues?query=NAME`); since the Amex Resy credit applies to any Resy "Pay at Restaurant" purchase (no separate curated list), a Resy search link is the cheap way to surface that without scraping Resy's API-less site. Also adds a `#recent` "recently searched" chip list (localStorage-backed, last 6 searches, click to re-search, "Clear recent" to reset) — `search()` now calls `saveRecent(name, loc)` on any successful render, covering manual searches, deep links, and resolved Maps/share links. Test 50 updated, test 52 added (52 cases, 199 assertions)
 
 ## Known-good Maps parsing baseline
 

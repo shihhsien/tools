@@ -39,6 +39,10 @@
   .divider { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
   .divider span { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  /* === Recently searched === */
+  .recent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 0; }
+  .recent-chip { font-size: 12px; padding: 5px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
+  .recent-clear { font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; width: auto; }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
@@ -158,6 +162,8 @@
   <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
 </div>
 
+<div id="recent" class="recent"></div>
+
 <div id="tip-wrap" style="display:none">
   <button id="tip-toggle" class="tip-toggle">&#9656; Use from Maps on iPhone</button>
   <div id="tip-body" class="tip-body" style="display:none">
@@ -187,7 +193,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.22.0</div>
+<div class="ver">v1.23.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -204,6 +210,7 @@ const locInput  = document.getElementById('loc');
 const mapsInput = document.getElementById('maps-input');
 const statusEl  = document.getElementById('status');
 const resultsEl = document.getElementById('results');
+const recentEl  = document.getElementById('recent');
 const btn       = document.getElementById('go');
 const nearBtn   = document.getElementById('near');
 const DEBUG   = new URLSearchParams(location.search).has('debug');
@@ -467,13 +474,16 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
   if (dist != null) metaParts.push(htmlEsc(fmtDist(dist)));
   if (info.cuisine_description) metaParts.push(htmlEsc(info.cuisine_description));
   if (info.phone) metaParts.push('<a href="tel:+1' + htmlEsc(String(info.phone).replace(/\D/g, '')) + '">' + htmlEsc(fmtPhone(info.phone)) + '</a>');
-  // Review links: a name+address place search lands on the Google place card
+  // Review/booking links: a name+address place search lands on the Google place card
   // (rating + reviews), unlike the old bare lat/lng pin; Yelp's search URL is the
-  // keyless route to its reviews (the Fusion API is paid and blocks browser calls).
+  // keyless route to its reviews (the Fusion API is paid and blocks browser calls);
+  // Resy's venue search surfaces reservation availability (and Amex Resy-credit
+  // eligibility, which applies to any Resy "Pay at Restaurant" purchase).
   if (info.dba) {
     const locStr = ((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' NY ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim();
     metaParts.push('<a href="' + htmlEsc('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(info.dba + ' ' + locStr)) + '" target="_blank" rel="noopener">Map ↗</a>');
     metaParts.push('<a href="' + htmlEsc('https://www.yelp.com/search?find_desc=' + encodeURIComponent(info.dba) + '&find_loc=' + encodeURIComponent(locStr)) + '" target="_blank" rel="noopener">Yelp ↗</a>');
+    metaParts.push('<a href="' + htmlEsc('https://resy.com/cities/ny/venues?query=' + encodeURIComponent(info.dba)) + '" target="_blank" rel="noopener">Resy ↗</a>');
   }
   const meta = metaParts.length ? '<div class="meta">' + metaParts.join(' \xb7 ') + '</div>' : '';
   return '<div class="card">'
@@ -562,7 +572,8 @@ function render(rows, name, originalName, addressHint) {
 async function search(addressHint) {
   const normalize = s => s.replace(/[‘’′]/g, "'");
   const originalDisplay = normalize(nameInput.value.trim()).toUpperCase();
-  const loc  = normalize(locInput.value.trim()).replace(/'/g, "''");
+  const locDisplay = normalize(locInput.value.trim());
+  const loc  = locDisplay.replace(/'/g, "''");
   if (!originalDisplay) return setStatus('Enter a restaurant name.');
 
   btn.disabled = true;
@@ -582,7 +593,9 @@ async function search(addressHint) {
       const groups = groupByRestaurant(rows);
       dbg(`search: got ${groups.length} result(s)`);
       if (groups.length > 0 || len === 1) {
-        return render(rows, displayName, len < words.length ? originalDisplay : null, addressHint);
+        const count = render(rows, displayName, len < words.length ? originalDisplay : null, addressHint);
+        if (count > 0) saveRecent(originalDisplay, locDisplay);
+        return count;
       }
     }
   } catch (e) {
@@ -839,6 +852,52 @@ async function onShare(raw) {
   if (url) { mapsInput.value = url; return onMapsLink(); }
   if (!name) setStatus("Couldn't read the shared content. Type the restaurant name above.");
 }
+
+// ---- Recently searched ---------------------------------------------------
+// Local-only history of successful searches, so the user can re-check a
+// place from before without retyping. Capped + deduped (case-insensitive
+// on name+loc), most-recent-first.
+const RECENT_KEY = 'recent-searches';
+const RECENT_MAX = 6;
+
+function loadRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch { return []; }
+}
+
+function saveRecent(name, loc) {
+  if (!name) return;
+  let list = loadRecent().filter(r => !(r.name === name && r.loc === loc));
+  list.unshift({ name, loc });
+  list = list.slice(0, RECENT_MAX);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch {}
+  renderRecent();
+}
+
+function renderRecent() {
+  const list = loadRecent();
+  if (!list.length) { recentEl.innerHTML = ''; return; }
+  recentEl.innerHTML = list.map((r, i) =>
+    '<button class="recent-chip" data-i="' + i + '">' + htmlEsc(r.name) + (r.loc ? ' \xb7 ' + htmlEsc(r.loc) : '') + '</button>'
+  ).join('') + '<button class="recent-clear">Clear recent</button>';
+}
+
+recentEl.addEventListener('click', e => {
+  const chip = e.target.closest('.recent-chip');
+  if (chip) {
+    const r = loadRecent()[Number(chip.dataset.i)];
+    if (!r) return;
+    nameInput.value = r.name;
+    locInput.value = r.loc || '';
+    search();
+    return;
+  }
+  if (e.target.closest('.recent-clear')) {
+    try { localStorage.removeItem(RECENT_KEY); } catch {}
+    renderRecent();
+  }
+});
+
+renderRecent();
 
 btn.addEventListener('click', () => search());
 nearBtn.addEventListener('click', searchNearby);
