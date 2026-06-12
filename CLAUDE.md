@@ -704,7 +704,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (52 cases, 199 assertions — all must pass):**
+**Required test cases (53 cases, 202 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -768,6 +768,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 50 | Review links (Google place search + Yelp + Resy) on card meta | Map link href includes `google.com/maps/search/?api=1`, decoded query has name + street; Yelp link href includes `yelp.com/search`, decoded has `find_desc=` name and street in `find_loc`; Resy link href includes `resy.com`, decoded includes the restaurant name |
 | 51 | Address-based chain disambiguation | Resolved short link's address narrows 2 same-name DOHMH matches to 1 card; status notes "matched by address"; placard hero shown; `.addr` matches the address-hint location |
 | 52 | Recently-searched list | empty on first load; successful search adds a `.recent-chip` with the searched name; persists across reload (localStorage); clicking a chip refills `#q` and re-searches; "Clear recent" empties the list |
+| 53 | `&` in name extracted from `?q=` URL | `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` resolves directly (no resolver calls); `#q`/`.name` show "MUTEKI UDON & RAMEN" |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -805,6 +806,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the review-links test (test 50, v1.21.0, updated v1.23.0): plain DOHMH search with `J([MAZZAT])`. All three links are built with `encodeURIComponent` (spaces become `%20`, recovered by `decodeURIComponent` — unlike the `+` from `URLSearchParams` elsewhere). Assert the Map link: `.meta a[href*="google.com/maps/search"]` exists, its href includes `api=1`, and its decoded href includes `MAZZAT` and `MAIN ST` (name + street in the query). Assert the Yelp link: `.meta a[href*="yelp.com/search"]` exists, its decoded href includes `find_desc=MAZZAT` and `MAIN ST` (street in `find_loc`). Assert the Resy link: `.meta a[href*="resy.com"]` exists and its decoded href includes `MAZZAT`. All three render whenever `dba` is present — no coordinates required.
 - For the address-disambiguation test (test 51, v1.22.0): mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' })` (microlink/jina as `E`), and `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])` where both fixtures share `dba: 'MAZZAT'` but differ in `camis`/`building`/`street`/`boro`/`zipcode` — `MAZZAT_A` (`building:'247', street:'SMITH ST', boro:'Brooklyn', zipcode:'11231'`) matches the resolved address; `MAZZAT_B` (`building:'500', street:'ATLANTIC AVE', boro:'Brooklyn', zipcode:'11217'`) does not. Trigger the short link via `triggerMaps`, wait for `.card`, then assert exactly 1 `.card`, `#status` includes "matched by address", `.placard-wrap` is present (hero shown for the narrowed single result), and `.addr` includes "SMITH ST".
 - For the recently-searched test (test 52, v1.23.0): plain DOHMH search with `J([MAZZAT])`. Assert `#recent` is empty (`innerHTML.trim() === ''`) before any search. Search for `MAZZAT`, wait for `.recent-chip`, assert its `textContent === 'MAZZAT'`. Reload the page and assert the chip still shows `MAZZAT` (proves `localStorage` persistence). Clear `#q`, click `.recent-chip`, wait for `.card`, and assert `#q` is refilled with `MAZZAT`. Click `.recent-clear` and assert `#recent` is empty again.
+- For the `&`-in-name test (test 53, v1.23.1): trigger `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` via `triggerMaps`. Mock `mapu.retiolus.net`/`microlink.io`/`jina.ai` as always-fail (`E`) — `nameFromUrl` should resolve `?q=` directly without any resolver call. Mock `43nn-pn8j` to `J([mkRow({ dba: 'MUTEKI UDON & RAMEN' })])`. Wait for `.card`, then assert `#q` (uppercased) `=== 'MUTEKI UDON & RAMEN'` and `.name === 'MUTEKI UDON & RAMEN'` — proves `isName`'s reject-regex no longer rejects names containing `&`.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -841,9 +843,15 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 
 - **Name extraction rejects garbage strings.** Both `nameFromUrl` and `cleanTitle`
   validate extracted values with `isName`: must contain a letter, must not contain
-  `?`/`=`/`&`, must not start with `http`. This prevents coordinates, raw short
+  `?`/`=`, must not start with `http`. This prevents coordinates, raw short
   codes (`qMJfabamuYZjqp4W8?g_st=ic`), and unexpanded URLs from reaching the
   name field.
+
+- **`isName` must NOT reject `&` (v1.23.1).** `&` is a legitimate character in
+  restaurant names ("Muteki Udon & Ramen"). A `?q=`/`?query=` value already comes
+  from `URLSearchParams`, which decodes `%26` to a literal `&` — it can't carry an
+  unencoded `&` separator. The `?`/`=` checks alone are sufficient to reject
+  tracking-param garbage like `?g_st=ic`. Do not re-add `&` to the reject regex.
 
 - **`isName` requires a letter — zoom-level `z` is a letter.** The test for
   test 10 (coordinate URL rejection) must use a coordinate string with no letters.
@@ -889,7 +897,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.23.0**
+Current: **v1.23.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -931,6 +939,7 @@ Notable versions:
 - v1.21.0 — review links on every card: "Map ↗" upgraded from a bare `?q=LAT,LNG` coordinate pin to a `google.com/maps/search/?api=1&query=NAME ADDRESS` place search (lands on the Google place card with rating/reviews), plus a new "Yelp ↗" link (`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`); link-out chosen over inline Yelp data because the Fusion API is paid-only for reviews (Plus plan), returns just 3 truncated excerpts, and blocks browser calls (no CORS) — inline would need a key + Worker proxy; test 38 updated, test 50 added (50 cases, 188 assertions)
 - v1.22.0 — address-based chain disambiguation: `splitPlace`/`parseShare`/`resolveMapsLink` now also return the raw address remainder (`addr`) alongside name/borough; `onMapsLink`/`onShare` pass it to `search(addressHint)` → `render(rows, name, originalName, addressHint)`. When a search returns multiple same-name DOHMH matches and an `addressHint` is available, `scoreAddressMatch(addr, info)` scores each match (building-number exact match = +2, street-name-token overlap = +1) and — only when there's a single clear winner with score > 0 — narrows to that one restaurant, showing the hero placard with a "· matched by address" status note; otherwise falls back unchanged to showing all matches. Fixed a latent bug where `btn.addEventListener('click', search)` passed the click `MouseEvent` as `search`'s `addressHint` argument, breaking `scoreAddressMatch`'s `.toUpperCase()` on every manual search — now wrapped in `() => search()`. Test 51 added (51 cases, 192 assertions)
 - v1.23.0 — "Resy ↗" review link added alongside Map/Yelp (`resy.com/cities/ny/venues?query=NAME`); since the Amex Resy credit applies to any Resy "Pay at Restaurant" purchase (no separate curated list), a Resy search link is the cheap way to surface that without scraping Resy's API-less site. Also adds a `#recent` "recently searched" chip list (localStorage-backed, last 6 searches, click to re-search, "Clear recent" to reset) — `search()` now calls `saveRecent(name, loc)` on any successful render, covering manual searches, deep links, and resolved Maps/share links. Test 50 updated, test 52 added (52 cases, 199 assertions)
+- v1.23.1 — fixed `isName`'s reject-regex (`nameFromUrl`, `cleanTitle`, `parseShare`) rejecting any name containing `&` — restaurants like "Muteki Udon & Ramen" failed with "Couldn't find a restaurant name in this link" even though `?q=Muteki+Udon+%26+Ramen` resolves the name with zero network calls. The `&` check was redundant: it was meant to reject tracking-param garbage (`?g_st=ic`), which the existing `?`/`=` checks already catch. Regex narrowed from `/[?=&]/` to `/[?=]/` in all three call sites. Test 53 added (53 cases, 202 assertions)
 
 ## Known-good Maps parsing baseline
 

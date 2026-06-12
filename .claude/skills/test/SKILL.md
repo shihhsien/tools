@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 52 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 53 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 52-case Playwright test suite, fix any failures, and confirm 199/199 assertions pass.
+Run the full 53-case Playwright test suite, fix any failures, and confirm 202/202 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `199 tests: 199 passed, 0 failed`
+Expected output ends with: `202 tests: 202 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -361,6 +361,16 @@ Plain DOHMH search with `J([MAZZAT])`. Sequence:
 4. Clear `#q`, click `.recent-chip`, wait for `.card`, assert `#q` value is now `MAZZAT`
    (clicking a chip refills the input and re-searches).
 5. Click `.recent-clear`, assert `#recent` is empty again.
+
+### `&` in name from `?q=` URL (test 53, v1.23.1)
+Trigger `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` via `triggerMaps`. Mock
+`mapu.retiolus.net`/`microlink.io`/`jina.ai` as always-fail (`E`) — `nameFromUrl` resolves
+`?q=` directly with zero resolver calls. Mock `43nn-pn8j` to
+`J([mkRow({ dba: 'MUTEKI UDON & RAMEN' })])`. Wait for `.card`, assert `#q` (uppercased)
+`=== 'MUTEKI UDON & RAMEN'` and `.name === 'MUTEKI UDON & RAMEN'`. Guards against
+`isName`'s reject-regex narrowed from `/[?=&]/` to `/[?=]/` (v1.23.1) — `&` is a legitimate
+character in names and `?q=Muteki+Udon+%26+Ramen` decodes to a literal `&`, which the old
+regex incorrectly rejected as query-string garbage.
 
 `saveRecent` is called from inside `search()`'s success branch, so it fires for manual
 searches, deep links, and resolved Maps/share links alike — no separate mocking needed

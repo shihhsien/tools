@@ -193,7 +193,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.23.0</div>
+<div class="ver">v1.23.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -668,7 +668,9 @@ function stripShortLinkQuery(url) {
 function nameFromUrl(url) {
   if (!url) return '';
   // Reject coordinates, URL strings, and query-param-looking values.
-  const isName = s => s.length > 1 && /[a-zA-Z]/.test(s) && !/[?=&]/.test(s) && !/^https?:\/\//i.test(s);
+  // (Note: "&" is allowed — it's a legitimate character in names like "Muteki Udon & Ramen",
+  // and decoded ?q=/?query= values can't carry an unencoded "&" separator anyway.)
+  const isName = s => s.length > 1 && /[a-zA-Z]/.test(s) && !/[?=]/.test(s) && !/^https?:\/\//i.test(s);
   const place = url.match(/\/maps\/place\/([^/@?&"'\s]+)/);
   if (place) {
     const name = decode(place[1].replace(/\+/g, ' ')).trim();
@@ -689,7 +691,7 @@ function nameFromUrl(url) {
 const JUNK_TITLE = /^(dynamic link not found|invalid dynamic link|page not found|not found|untitled|error|maps)$/i;
 function cleanTitle(raw) {
   const name = (raw || '').replace(/\s*[-·|]\s*(Google\s+)?Maps\s*$/i, '').trim();
-  return name.length > 1 && !/^google/i.test(name) && !JUNK_TITLE.test(name) && !/[?=&]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
+  return name.length > 1 && !/^google/i.test(name) && !JUNK_TITLE.test(name) && !/[?=]/.test(name) && !/^https?:\/\//i.test(name) ? name : '';
 }
 
 // Guess the NYC borough from an address string (used to prefill location).
@@ -721,7 +723,7 @@ function splitPlace(name, boro) {
 // — but may be a bare name or a bare URL. Prefer the name (no resolution needed);
 // keep the Maps URL as a fallback for when the name is missing or finds nothing.
 function parseShare(text) {
-  const isName = s => s.length > 1 && /[a-zA-Z]/.test(s) && !/[?=&]/.test(s) && !/^https?:\/\//i.test(s);
+  const isName = s => s.length > 1 && /[a-zA-Z]/.test(s) && !/[?=]/.test(s) && !/^https?:\/\//i.test(s);
   const url = (text.match(/https?:\/\/\S+/g) || []).find(u => MAPS_HOSTS.test(u)) || '';
   const lines = text.replace(/https?:\/\/\S+/g, ' ').split(/[\n\r]+/).map(s => s.trim()).filter(Boolean);
   let name = (lines[0] || '')
