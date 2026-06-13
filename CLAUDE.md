@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (66 cases, 282 assertions)
+- `.claude/skills/test/` — Playwright test skill (67 cases, 293 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -366,6 +366,21 @@ every chip a full-width stacked bar (the v1.25.1 bug). Long names are capped at
 This is purely local/client-side — no new network dependency — and is the
 underlying motivation for the v1.23.0 "Resy ↗" review link (below): both let
 the user quickly act on a place they've already looked up.
+
+### Copy link to this search (v1.33.0)
+
+Every non-empty `render()` result (single or multi-match) prepends a
+`<button class="copy-link">🔗 Copy link to this search</button>` to `#results`,
+ahead of the hero placard / cards. Its `data-url` is built from the same
+`?q=Name&loc=Location` shape as the deep-link reader: `new URLSearchParams({
+q: name })` plus `loc` from `locInput.value.trim()` when non-empty, joined onto
+`${location.origin}${location.pathname}`. A single delegated click listener on
+`#results` (registered once, since `render()` replaces `innerHTML` wholesale)
+calls `navigator.clipboard.writeText(data-url)`, flashing the button text to
+"✓ Link copied" (or "Copy failed" on a clipboard error) for 1.5s. Pure
+client-side, no new network dependency — turns any search result (manual,
+deep-link, or resolved Maps/share link) into a shareable bookmark without
+re-deriving the iOS Shortcut flow.
 
 ---
 
@@ -898,7 +913,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (66 cases, 282 assertions — all must pass):**
+**Required test cases (67 cases, 293 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -985,6 +1000,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 65 | Borough comparison panel (opt-in, fetched on open) | card has a collapsed `.boro-compare`; a plain search fires no boro query (1 search call); opening it runs the `$group=grade` query scoped to `upper(boro)='BROOKLYN'` and shows "About 88 in 100 graded Brooklyn restaurants are A. This one is graded A — in the majority." |
 | 65b | Borough comparison degrades gracefully | boro query (and mirror/proxy) all 500 → panel body reads "Couldn't load borough comparison." |
 | 66 | Accessible labels for `#q`/`#loc`/`#maps-input` (v1.32.0) | `label[for="q"]`, `label[for="loc"]`, `label[for="maps-input"]` all present with non-empty text, each `for` resolves to a real input id, and each label is visually hidden via `.sr-only` |
+| 67 | "Copy link to this search" button (v1.33.0) | `.copy-link` present on a non-empty result; click copies a `?q=...` URL via `navigator.clipboard.writeText` (stubbed); button text becomes "✓ Link copied" |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1124,7 +1140,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.32.0**
+Current: **v1.33.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1178,6 +1194,7 @@ Notable versions:
 - v1.30.0 — three history-derived insights (pure client-side, zero new network calls): a `↻ repeat` badge (`.viol-repeat`) on a violation whose `violation_code` recurred at an earlier inspection (`groupByRestaurant` precomputes `priorDates`); a `Last critical violation: DATE · none at the latest inspection` line (`lastCriticalHtml`, fed by `g.lastCritical`) shown only when the most recent critical predates the latest (clean-latest) inspection; and a `Grade A at N of M recent inspections` consistency line (`gradeConsistencyHtml`) over the ≤6 history window. All derived from rows already fetched. Tests 62–64b added (64 cases, 275 assertions)
 - v1.31.0 — borough comparison: each card with a borough gains an opt-in "How does {Boro} compare?" panel (`boroCompareHtml`) that, on first open, runs the citywide `$group=grade` aggregate scoped to that borough (`loadBoroGradeDist`, cached per boro via `boroDistCache`) and shows "About N in 100 graded {Boro} restaurants are A. This one is graded X — in the majority/minority." The fetch is deferred to a user toggle via a single capturing `toggle` listener on `#results` (the event doesn't bubble), so a plain search makes no extra request and no existing card test is perturbed; degrades to "Couldn't load borough comparison." on failure. Completes the Tier-1/Tier-2 no-infra research backlog. Tests 65–65b added (65 cases, 284 assertions)
 - v1.32.0 — accessibility: `#q`, `#loc`, and `#maps-input` gain visually-hidden `<label for="...">` elements (`.sr-only`, clip-rect technique) mirroring their placeholder text, so screen readers announce a stable field name instead of relying on `placeholder` (which some AT skips, and which disappears once the field has a value). Markup/CSS only, no JS changes. Closes the documented Tier-4 a11y gap. Test 66 added (66 cases, 282 assertions)
+- v1.33.0 — "🔗 Copy link to this search" button: every non-empty `render()` result prepends a button whose `data-url` is the same `?q=Name&loc=Location` deep-link shape the app already reads on load, built from the current search name and `#loc` value; a delegated click listener on `#results` copies it via `navigator.clipboard.writeText` and flashes "✓ Link copied"/"Copy failed" for 1.5s. Pure client-side, no new dependency — gives any search result (manual, deep-link, or resolved Maps/share link) a one-tap shareable bookmark. Test 67 added (67 cases, 293 assertions)
 
 ## Known-good Maps parsing baseline
 

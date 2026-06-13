@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 66 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 67 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 66-case Playwright test suite, fix any failures, and confirm 282/282 assertions pass.
+Run the full 67-case Playwright test suite, fix any failures, and confirm 293/293 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 66 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 67 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `282 tests: 282 passed, 0 failed`
+Expected output ends with: `293 tests: 293 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -524,6 +524,15 @@ Static — no search, `setupRoute(p, [])`. Assert `label[for="q"]`, `label[for="
 `label[for="maps-input"]` all exist with non-empty `textContent`, each `for` attribute resolves
 to a real element via `document.getElementById`, and each label is visually hidden:
 `getComputedStyle(label).position === 'absolute'` (the `.sr-only` clip-rect technique).
+
+### Copy-link button (test 67, v1.33.0)
+Plain DOHMH search (`J([MAZZAT])`, `#q` fill + `#go` click, wait for `.card`). Before
+`page.goto`, stub the Clipboard API via `page.addInitScript(() => { window.__copied = null;
+navigator.clipboard.writeText = t => { window.__copied = t; return Promise.resolve(); }; })` —
+real clipboard access is unavailable/permission-gated under `file://` + headless Chromium.
+Assert `.copy-link` exists, click it, `waitForFunction(() => window.__copied !== null)`, assert
+`window.__copied` includes `q=MAZZAT`, and assert the button's `textContent` becomes
+`✓ Link copied`.
 
 ## Step 4 — Iterate
 

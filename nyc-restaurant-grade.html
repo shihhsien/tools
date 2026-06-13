@@ -63,6 +63,7 @@
   /* width/margin-top override the global `button` rule below — without it each chip spans the full row */
   .recent-chip { width: auto; margin-top: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding: 5px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
   .recent-clear { width: auto; margin-top: 0; font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
+  .copy-link { width: auto; margin: 0 0 10px; font-size: 12px; padding: 6px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); font-weight: 500; }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
@@ -244,7 +245,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.32.0</div>
+<div class="ver">v1.33.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -767,9 +768,29 @@ function render(rows, name, originalName, addressHint) {
   }
   setStatus(`${groups.length} match(es) · official data${note}`);
   const hero = groups.length === 1 ? placardHtml(groups[0].graded?.grade ?? null) : '';
-  resultsEl.innerHTML = hero + groups.map(cardHtml).join('');
+  const shareParams = new URLSearchParams({ q: name });
+  const shareLoc = locInput.value.trim();
+  if (shareLoc) shareParams.set('loc', shareLoc);
+  const shareUrl = `${location.origin}${location.pathname}?${shareParams}`;
+  const copyBtn = `<button class="copy-link" data-url="${htmlEsc(shareUrl)}">&#128279; Copy link to this search</button>`;
+  resultsEl.innerHTML = copyBtn + hero + groups.map(cardHtml).join('');
   return groups.length;
 }
+
+// Delegated — #results is replaced wholesale by render(), so a static listener
+// on the container catches clicks on any (re)rendered .copy-link button.
+resultsEl.addEventListener('click', async e => {
+  const copyBtn = e.target.closest('.copy-link');
+  if (!copyBtn) return;
+  const original = copyBtn.textContent;
+  try {
+    await navigator.clipboard.writeText(copyBtn.dataset.url);
+    copyBtn.textContent = '✓ Link copied';
+  } catch {
+    copyBtn.textContent = 'Copy failed';
+  }
+  setTimeout(() => { copyBtn.textContent = original; }, 1500);
+});
 
 // ---- Search -----------------------------------------------------------
 async function search(addressHint) {
