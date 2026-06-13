@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 58 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 59 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 58-case Playwright test suite, fix any failures, and confirm 240/240 assertions pass.
+Run the full 59-case Playwright test suite, fix any failures, and confirm 243/243 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 58 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 59 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `240 tests: 240 passed, 0 failed`
+Expected output ends with: `243 tests: 243 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -446,6 +446,18 @@ Nominatim 429s. Identical setup to test 57 (reuse `MAZZAT_A`/`MAZZAT_B`, the nam
 Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })`.
 Assert: `photonHit === true` (Nominatim 429 → Photon fallback fired); exactly 1 `.card`;
 `#status` includes `matched by address`; `.addr` includes `SMITH ST`; `#osm-attr` visible.
+
+### Status live-region re-announce (test 59, v1.27.1)
+`setStatus` appends a trailing zero-width space (U+200B) when the new status text equals
+the last, so the `role="status"` aria-live region re-announces a repeated message for
+VoiceOver. No mocks needed — exercise the **empty-input guard**, the genuine
+back-to-back-identical path (a successful search interleaves a "Looking up…" status, so its
+result already differs from the prior text and re-announces on its own). Build
+`const ZWSP = String.fromCharCode(0x200B);` (don't type the invisible char — Write/Edit can
+drop it). Click `#go` with `#q` empty; assert `#status` text includes `Enter a restaurant name`
+and does NOT include `ZWSP`. Click `#go` again (still empty); assert the status now includes
+both `Enter a restaurant name` **and** `ZWSP`. U+200B is invisible, so every other test's
+visible-substring `.includes()` checks are unaffected.
 
 ## Step 4 — Iterate
 

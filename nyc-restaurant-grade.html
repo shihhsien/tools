@@ -229,7 +229,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.27.0</div>
+<div class="ver">v1.27.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -256,7 +256,18 @@ if (DEBUG) debugEl.style.display = 'block';
 
 // ---- Small helpers ----------------------------------------------------
 const decode = s => { try { return decodeURIComponent(s); } catch { return s; } };
-const setStatus = text => { statusEl.className = 'status'; statusEl.textContent = text; };
+// An aria-live region (#status has role="status") won't re-announce text that's
+// identical to what it already holds — so searching two restaurants that both
+// yield "1 match" goes silent for VoiceOver. Toggle a trailing zero-width space
+// when the new text repeats the last, so screen readers speak it again. The
+// U+200B is invisible and harmless to substring checks.
+let lastStatusText = '';
+const setStatus = text => {
+  statusEl.className = 'status';
+  if (text === lastStatusText) text += '​';
+  lastStatusText = text;
+  statusEl.textContent = text;
+};
 const setError  = html => { statusEl.className = 'status err'; statusEl.innerHTML = html; };
 const gradeClass = g => (['A', 'B', 'C'].includes(g) ? g : 'other');
 const htmlEsc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
