@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (56 cases, 228 assertions)
+- `.claude/skills/test/` — Playwright test skill (57 cases, 234 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -286,6 +286,43 @@ A plain manual search (`#go` click, Enter key) passes no `addressHint`
 (`addressHint === undefined`), so `scoreAddressMatch` is never invoked and
 multi-result behavior is unchanged for that path.
 
+### Reverse-geocoded address recovery (v1.26.0)
+
+The v1.22.0 disambiguation only fires when the resolved link carries an address
+in its place path (`/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/`).
+A **dropped-pin or name-only share** (`/maps/place/Mazzat/@40.6782,-73.9929,17z`)
+has a name but no address — so `splitPlace`'s `addr` is empty and a same-name
+chain can't be narrowed. v1.26.0 closes that gap by reverse-geocoding the
+coordinates that such a URL always carries.
+
+Implements the previously-deferred tiered design (place path first, coordinates
+second):
+
+- The three resolvers now also return the resolved URL as `link` (`viaMapu` →
+  `full_link`, `viaMicrolink` → `data.url`, `viaJina` → the `URL Source:` line).
+- `resolveMapsLink` keeps `fullUrl` (the input URL for a direct resolution, else
+  the winning resolver's `link`). **Only when `splitPlace` yielded no `addr`**,
+  it runs `coordsFromUrl(fullUrl)` (regex `@(-?\d+\.\d+),(-?\d+\.\d+)`) and, if
+  coordinates are present, `await`s `reverseGeocode(lat, lng)`.
+- `reverseGeocode` calls Nominatim
+  (`nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=…&lon=…`),
+  builds `"247 Smith Street, Brooklyn, NY, 11231"` from `address.house_number` +
+  `road` + (`borough`/`suburb`/`city_district`, else `COUNTY_BORO[county]`) +
+  `postcode`, and returns `{ addr, boro }`. The `addr` becomes the disambiguation
+  hint; `boro` fills `#loc` only if no borough was found earlier.
+
+This is **best-effort and degrades silently**: Nominatim is keyless and CORS-open
+on success but omits CORS headers on a 429 rate-limit (1 req/s cap), which
+surfaces as a fetch error — caught, returns `null`, no address recovery, card
+still renders name-only. The call is **gated on `!place.addr`**, so it never
+fires for place-path shares or manual searches — only the dropped-pin case pays
+the extra round-trip.
+
+**ODbL attribution.** Using OSM data obliges attribution. A hidden
+`#osm-attr` footer line ("Location lookups © OpenStreetMap contributors") is
+revealed (`display: block`) the first time `reverseGeocode` returns a usable
+result — shown only when OSM data was actually used, not on every load.
+
 ### Recently searched (v1.23.0)
 
 A `#recent` chip list below the Maps-link input shows the last `RECENT_MAX`
@@ -330,6 +367,8 @@ itself is the richest free, client-side source, not the resolver metadata:**
    → returns `address.postcode` (ZIP) and `address.borough`. Hard limit **1 req/sec**;
    must send a `Referer` (browsers do automatically). The common "CORS error" is
    misdiagnosed rate-limiting — the endpoint sends `Access-Control-Allow-Origin: *`.
+   **Built in v1.26.0** (`reverseGeocode`) — see "Reverse-geocoded address recovery"
+   above.
 
 3. **`data=!...` protobuf yields no parseable address** — only coordinates (redundant
    with `@`) and opaque place/feature/KG IDs that need a keyed Google API to expand.
@@ -344,10 +383,11 @@ itself is the richest free, client-side source, not the resolver metadata:**
    `&data.X.selector=…&data.X.attr=textContent` GET params (50/day, no key), but selectors
    against Google's obfuscated Maps DOM are brittle.
 
-**Recommended tiered design if this is ever built** (deferred — not implemented):
-parse the place path for street/borough/ZIP → else regex `@lat,lng` and call Nominatim
-→ keep microlink/Jina as name-only resolvers. Adding Nominatim means a new network
-dependency and a new mocked test case.
+**Tiered design — implemented in v1.26.0:** parse the place path for
+street/borough/ZIP → else regex `@lat,lng` and call Nominatim → keep
+microlink/Jina as name-only resolvers. Added Nominatim as a new (best-effort)
+network dependency and test 57 as the mocked case. See "Reverse-geocoded address
+recovery (v1.26.0)" above.
 
 ---
 
@@ -365,8 +405,10 @@ Verified facts from a 5-agent fan-out research run (sources in session transcrip
   requirement, CORS on success but **absent on 403/429** (rate-limit looks like a
   CORS error), returns `postcode`; for borough check `address.borough || suburb ||
   city_district` + county→borough map. Requires ODbL attribution in footer.
+  **Implemented in v1.26.0** (`reverseGeocode`, `COUNTY_BORO`, `#osm-attr`).
 - **Photon** (`photon.komoot.io/reverse`) — best no-key fallback, CORS-open,
-  returns `postcode`; demo server, no SLA.
+  returns `postcode`; demo server, no SLA. A natural second tier if Nominatim
+  rate-limiting proves a problem in production (not yet wired in).
 - **BigDataCloud is DISALLOWED for this app**: its fair-use policy permits only
   live device-GPS coordinates; feeding it coordinates parsed from a Maps URL
   violates policy (HTTP 402 + IP bans).
@@ -431,7 +473,7 @@ The `<script>` is organised into labelled sections:
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
 | Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `trendHtml`, `violationsHtml`, `historyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
 | Search | `search`, `searchNearby` |
-| Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
+| Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `coordsFromUrl`, `reverseGeocode`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Recently searched | `loadRecent`, `saveRecent`, `renderRecent` (localStorage-backed search history) |
 | Wiring | `onMapsLink` (with auto-retry), `onShare` (name-first share-payload handler), event listeners, deep-link init on load |
 
@@ -767,7 +809,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (56 cases, 228 assertions — all must pass):**
+**Required test cases (57 cases, 234 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -837,6 +879,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 55 | Inspection freshness chip — today | row with `inspection_date` = now → `.meta .freshness` text === "Inspected today" |
 | 55b | Inspection freshness chip — overdue | row with `inspection_date` far in the past → `.meta .freshness.freshness-overdue` text === "Inspection overdue" |
 | 56 | Design system v2 — brand header, focus ring, placard webfont | `.brand-chip` text === "A"; `h1` text === "NYC Restaurant Grade"; focused `#q` has a non-`none` computed `box-shadow`; `.placard` computed font-family includes "Liberation Sans Narrow" |
+| 57 | Nominatim reverse-geocode enriches a coordinate-only Maps link for disambiguation | resolver returns a name-only `@lat,lng` place URL; Nominatim mock hit; 2 same-name DOHMH matches narrowed to 1 card; status "matched by address"; `.addr` includes "SMITH ST"; `#osm-attr` visible |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -879,6 +922,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the freshness tests (tests 55/55b, v1.24.0): plain DOHMH search. Test 55 mocks a row with `inspection_date: new Date().toISOString()` (today, computed at test-run time so it's always "now") — assert `.meta .freshness` present and `textContent === 'Inspected today'`. Test 55b mocks a row with `inspection_date: '2018-01-01T00:00:00.000'` (always > `FRESHNESS_OVERDUE_DAYS` old) — assert `.meta .freshness.freshness-overdue` present and `textContent === 'Inspection overdue'`.
 
 - For the design-system test (test 56, v1.25.0): plain DOHMH search with `J([MAZZAT])` (single result so `.placard` renders). Before searching, assert `.brand-chip` textContent `=== 'A'` and `h1` textContent `=== 'NYC Restaurant Grade'`. Then `page.focus('#q')` and assert `getComputedStyle` `boxShadow !== 'none'` (the NYC-blue focus ring). After the card renders, assert `getComputedStyle(document.querySelector('.placard')).fontFamily` includes `Liberation Sans Narrow` — computed font-family reports the declared stack, so this holds even if the TTF doesn't load under `file://`.
+- For the Nominatim reverse-geocode test (test 57, v1.26.0): two same-name DOHMH fixtures (reuse test 51's `MAZZAT_A` = `building:'247', street:'SMITH ST'` and `MAZZAT_B` = `building:'500', street:'ATLANTIC AVE'`). Mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6782,-73.9929,17z' })` — a **name-only place path with `@lat,lng` but no comma-address**, so `splitPlace`'s `addr` is empty and the coordinate path fires. Mock `microlink.io`/`jina.ai` → `E`. Mock `nominatim.openstreetmap.org` with a flag handler (`nominatimHit = true`) returning `J({ address: { house_number:'247', road:'Smith Street', borough:'Brooklyn', county:'Kings County', state:'New York', postcode:'11231' } })`. Mock `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`. Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })` (resolver + Nominatim round-trips). Assert: `nominatimHit === true` (coords extracted and reverse-geocode called), exactly 1 `.card` (disambiguation narrowed), `#status` includes `matched by address`, `.addr` includes `SMITH ST` (the 247 location won), and `#osm-attr` is visible (`getComputedStyle(el).display !== 'none'` — attribution revealed on use). Declare `nominatimHit` outside `setup`/`fn`. **Note:** the existing resolver tests whose mapu mock returns a name-only `@coords` URL (e.g. tests 12/15/41) now also reach `reverseGeocode`, but `nominatim.openstreetmap.org` is unmocked there → `setupRoute` aborts it → `reverseGeocode` catches the fetch rejection and returns `null` → card still renders name-only, no `pageerror`. Do not add a Nominatim mock to those tests.
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -969,7 +1013,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.25.1**
+Current: **v1.26.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1015,6 +1059,7 @@ Notable versions:
 - v1.24.0 — two new card features from a June 2026 research run: a `.trend` indicator (`trendHtml`) comparing the two most recent inspection scores (lower = better) — ▲ "Improving (N pts)" in green, ▼ "Declining (N pts)" in orange, or ▬ "No change", shown after the score bar whenever ≥2 inspections exist; and an "inspection freshness" chip (`fmtFreshness`) as the first item in `.meta` — "Inspected today/N days/N month(s) ago", or "Inspection overdue" past `FRESHNESS_OVERDUE_DAYS` (545 days, ~18 months) without a new inspection. Both are pure client-side derivations from data the app already fetches. Tests 54–55b added (55 cases, 222 assertions)
 - v1.25.0 — design system v2 applied: the `nyc-restaurant-grade-design` skill replaced with the user-supplied v2 bundle (new components for the v1.15–1.24 features, fonts + interaction tokens, templates), and its four production deltas implemented in the app — brand logomark header (34px NYC-blue "A" chip + "NYC Restaurant Grade" wordmark replacing the plain `<h1>`), Liberation Sans Narrow placard webfont (`assets/fonts/`, `@font-face`, ahead of the "Arial Narrow" fallback), NYC-blue focus ring (3px `rgba(31,87,166,.45)` halo — inputs on any focus, buttons on `:focus-visible`; replaces the bare `outline: none`), and a 220ms rise-in entrance for `.card`/`.placard-wrap` gated on `prefers-reduced-motion`. Markup/CSS only, no JS changes. Test 56 added (56 cases, 227 assertions)
 - v1.25.1 — fixed recent-search chips rendering as full-width stacked bars: the global `button { width: 100%; margin-top: 10px }` rule was leaking into `.recent-chip` (the chip rule never declared `width`/`margin-top`), so each entry spanned the whole row and the history filled the top of the page. `.recent-chip`/`.recent-clear` now declare `width: auto; margin-top: 0`, and chips get `max-width: 180px` + ellipsis so a long name can't monopolise a row — the list renders as 1–2 rows of compact wrapping pills, the original intent. CSS only. Test 52 gains a not-full-width assertion (56 cases, 228 assertions)
+- v1.26.0 — reverse-geocoded address recovery for dropped-pin Maps shares: when a resolved link is name-only with `@lat,lng` but no place-path address, `resolveMapsLink` now extracts the coordinates (`coordsFromUrl`) and reverse-geocodes them via Nominatim (`reverseGeocode`, keyless/CORS-open OpenStreetMap) to recover a street/borough/ZIP, feeding the v1.22.0 chain-disambiguation that previously had nothing to match on for pin shares. Gated on `!place.addr` (place-path shares and manual searches never call it); degrades silently on rate-limit/error. The three resolvers now also return the resolved URL as `link`. ODbL attribution shown in a `#osm-attr` footer line, revealed only once OSM data is actually used. Implements the long-deferred tiered address-extraction design. Test 57 added (57 cases, 234 assertions)
 
 ## Known-good Maps parsing baseline
 

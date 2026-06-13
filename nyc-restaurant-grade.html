@@ -179,6 +179,9 @@
   .about-body p { margin: 8px 0; }
   .about-body b { color: var(--text); font-weight: 600; }
   .about-body .src { font-size: 11px; }
+  /* ODbL attribution — revealed only after a Nominatim reverse-geocode is actually used */
+  .osm-attr { font-size: 11px; color: var(--gray); margin: 10px 2px 56px; }
+  .osm-attr a { color: var(--muted); }
   #debug-log { display:none; font-family:monospace; font-size:11px; color:#6b7280; background:#111; border:1px solid #2a2a2c; border-radius:8px; padding:10px; margin-top:12px; max-height:220px; overflow-y:auto; line-height:1.6; }
   .ver { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 11px; color: var(--gray); background: var(--bg); border-top: 1px solid var(--line); }
 </style>
@@ -224,8 +227,9 @@
   </div>
 </details>
 
+<div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.25.1</div>
+<div class="ver">v1.26.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -245,6 +249,7 @@ const resultsEl = document.getElementById('results');
 const recentEl  = document.getElementById('recent');
 const btn       = document.getElementById('go');
 const nearBtn   = document.getElementById('near');
+const osmAttrEl = document.getElementById('osm-attr');
 const DEBUG   = new URLSearchParams(location.search).has('debug');
 const debugEl = document.getElementById('debug-log');
 if (DEBUG) debugEl.style.display = 'block';
@@ -771,6 +776,42 @@ function boroFromAddr(addr) {
   return '';
 }
 
+// A resolved place URL always carries @lat,lng even when its path is name-only
+// (dropped-pin shares). Pull the coordinates out for reverse geocoding.
+function coordsFromUrl(url) {
+  const m = (url || '').match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  return m ? { lat: m[1], lng: m[2] } : null;
+}
+
+// Nominatim county → NYC borough, for when the address lacks a borough/suburb field.
+const COUNTY_BORO = {
+  'kings county': 'BROOKLYN', 'new york county': 'MANHATTAN', 'queens county': 'QUEENS',
+  'bronx county': 'BRONX', 'richmond county': 'STATEN ISLAND'
+};
+
+// Reverse-geocode coordinates → "247 Smith Street, Brooklyn, NY, 11231" via
+// Nominatim (OpenStreetMap). Best-effort: recovers a street/borough/ZIP for a
+// resolved Maps link that has coordinates but no address (dropped-pin shares),
+// so chain disambiguation can still narrow same-named matches. Free, no key,
+// CORS-open on success (absent on 429 rate-limit → surfaces as a fetch error,
+// swallowed here). On any success the ODbL attribution footer is revealed.
+async function reverseGeocode(lat, lng) {
+  dbg(`reverseGeocode: ${lat},${lng}`);
+  try {
+    const res = await timeoutFetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng));
+    if (!res.ok) { dbg(`reverseGeocode: HTTP ${res.status}`); return null; }
+    const a = (await res.json()).address || {};
+    const street = [a.house_number, a.road].filter(Boolean).join(' ');
+    const boro = boroFromAddr(a.borough || a.suburb || a.city_district || '') || COUNTY_BORO[(a.county || '').toLowerCase()] || '';
+    const zip = a.postcode || '';
+    const addr = [street, boro || a.county, 'NY', zip].filter(Boolean).join(', ');
+    if (!street && !boro && !zip) { dbg('reverseGeocode: ✗ no usable fields'); return null; }
+    osmAttrEl.style.display = 'block';   // OSM data was used — show attribution
+    dbg(`reverseGeocode: ✓ addr="${addr}" boro="${boro || zip}"`);
+    return { addr, boro: boro || zip };
+  } catch (e) { dbg('reverseGeocode: ✗ ' + (e.message || e)); return null; }
+}
+
 // Resolvers may return "Name, 123 St, Brooklyn, NY 11231" — keep the name, mine
 // the rest for a borough name, falling back to a 5-digit ZIP when no borough is
 // found. #loc accepts either via buildUrl's `boro like` / `zipcode=` clauses.
@@ -828,7 +869,7 @@ async function viaMapu(url) {
   const name = nameFromUrl(full) || cleanTitle(full);
   if (!name) { dbg('viaMapu: ✗ no name extracted'); throw 0; }
   dbg(`viaMapu: ✓ name="${name}"`);
-  return { name, boro: boroFromAddr(full) };
+  return { name, boro: boroFromAddr(full), link: full };
 }
 
 async function viaMicrolink(url) {
@@ -840,7 +881,7 @@ async function viaMicrolink(url) {
   const name = data && (nameFromUrl(data.url) || cleanTitle(data.title));
   if (!name) { dbg('viaMicrolink: ✗ no name'); throw 0; }
   dbg(`viaMicrolink: ✓ name="${name}"`);
-  return { name, boro: boroFromAddr(data.url) || boroFromAddr(data.title) };
+  return { name, boro: boroFromAddr(data.url) || boroFromAddr(data.title), link: data.url || '' };
 }
 
 async function viaJina(url) {
@@ -855,21 +896,43 @@ async function viaJina(url) {
   const name = nameFromUrl(source) || cleanTitle(title) || nameFromUrl(text);
   if (!name) { dbg('viaJina: ✗ no name'); throw 0; }
   dbg(`viaJina: ✓ name="${name}"`);
-  return { name, boro: boroFromAddr(text) };
+  return { name, boro: boroFromAddr(text), link: source };
 }
 
 async function resolveMapsLink(url) {
+  let place, fullUrl;
   const direct = nameFromUrl(url);
-  if (direct) { dbg(`resolved directly: "${direct}"`); return splitPlace(direct, ''); }
-  dbg('no direct name — racing 3 resolvers');
-  try {
-    const place = await Promise.any([viaMapu(url), viaMicrolink(url), viaJina(url)]);
-    dbg(`resolver won: name="${place.name}" boro="${place.boro}"`);
-    return splitPlace(place.name, place.boro);
-  } catch {
-    dbg('all resolvers failed');
-    throw new Error('app-link');
+  if (direct) {
+    dbg(`resolved directly: "${direct}"`);
+    place = splitPlace(direct, '');
+    fullUrl = url;
+  } else {
+    dbg('no direct name — racing 3 resolvers');
+    let won;
+    try {
+      won = await Promise.any([viaMapu(url), viaMicrolink(url), viaJina(url)]);
+    } catch {
+      dbg('all resolvers failed');
+      throw new Error('app-link');
+    }
+    dbg(`resolver won: name="${won.name}" boro="${won.boro}"`);
+    place = splitPlace(won.name, won.boro);
+    fullUrl = won.link || '';
   }
+  // Tiered address recovery: the place path is the richest free source, but a
+  // name-only / dropped-pin share has no address there — fall back to reverse-
+  // geocoding the @lat,lng so chain disambiguation still has something to match.
+  if (!place.addr) {
+    const c = coordsFromUrl(fullUrl);
+    if (c) {
+      const geo = await reverseGeocode(c.lat, c.lng);
+      if (geo) {
+        place.addr = geo.addr;
+        if (!place.boro) place.boro = geo.boro;
+      }
+    }
+  }
+  return place;
 }
 
 // ---- Wiring -----------------------------------------------------------

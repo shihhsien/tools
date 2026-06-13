@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 56 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 57 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 56-case Playwright test suite, fix any failures, and confirm 228/228 assertions pass.
+Run the full 57-case Playwright test suite, fix any failures, and confirm 234/234 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 56 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 57 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `228 tests: 228 passed, 0 failed`
+Expected output ends with: `234 tests: 234 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -405,6 +405,32 @@ joins cleanly). Then `await p.focus('#q')` and assert the computed `boxShadow !=
 `getComputedStyle(document.querySelector('.placard')).fontFamily` includes
 `Liberation Sans Narrow` — computed font-family reports the declared stack, so this holds
 even when the TTF doesn't actually load under `file://`.
+
+### Nominatim reverse-geocode (test 57, v1.26.0)
+Tests the dropped-pin path: a resolved Maps link with `@lat,lng` but no place-path
+address gets reverse-geocoded so chain disambiguation has something to match. Reuse
+test 51's two same-name fixtures:
+```js
+const MAZZAT_A = mkRow({ camis: '2', dba: 'MAZZAT', building: '247', street: 'SMITH ST', boro: 'Brooklyn', zipcode: '11231' });
+const MAZZAT_B = mkRow({ camis: '31', dba: 'MAZZAT', building: '500', street: 'ATLANTIC AVE', boro: 'Brooklyn', zipcode: '11217' });
+```
+Declare `let nominatimHit = false;` outside `setup`/`fn`. Mock (in `setup`):
+- `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6782,-73.9929,17z' })`
+  — **name-only place path, `@lat,lng`, no comma-address** (so `splitPlace`'s `addr` is
+  empty and the coordinate path fires). `microlink.io`/`jina.ai` → `E`.
+- `nominatim.openstreetmap.org` → function handler `(r) => { nominatimHit = true; return r.fulfill({ ...J({ address: { house_number:'247', road:'Smith Street', borough:'Brooklyn', county:'Kings County', state:'New York', postcode:'11231' } }) }); }`
+- `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`.
+
+Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })`.
+Assert: `nominatimHit === true`; exactly 1 `.card`; `#status` includes `matched by address`;
+`.addr` includes `SMITH ST`; and `#osm-attr` visible
+(`await p.$eval('#osm-attr', el => getComputedStyle(el).display !== 'none')`).
+
+**Why other resolver tests don't need a Nominatim mock:** tests whose mapu mock returns a
+name-only `@coords` URL (12, 15, 41, …) now also reach `reverseGeocode`, but
+`nominatim.openstreetmap.org` is unmocked → `setupRoute` aborts it → the fetch rejection is
+caught, `reverseGeocode` returns `null`, the card renders name-only, and no `pageerror`
+fires. Leave them unmocked.
 
 ## Step 4 — Iterate
 
