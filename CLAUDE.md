@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (67 cases, 293 assertions)
+- `.claude/skills/test/` — Playwright test skill (68 cases, 314 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -381,6 +381,29 @@ calls `navigator.clipboard.writeText(data-url)`, flashing the button text to
 client-side, no new network dependency — turns any search result (manual,
 deep-link, or resolved Maps/share link) into a shareable bookmark without
 re-deriving the iOS Shortcut flow.
+
+### Favorites / pinned list (v1.34.0)
+
+A second, manually-curated localStorage list — separate from the v1.23.0
+`#recent` history, which records every successful search automatically.
+Each card's `.meta` line gains a `.fav-toggle` button ("☆ Save" /
+"★ Saved", `aria-pressed`) alongside the Map/Yelp/Resy links, keyed on
+`info.dba` (name) + `info.boro` (loc) — the same pair used for the place,
+not the searched term, so a chain's individual locations can be pinned
+separately. `toggleFavorite(name, loc)` adds/removes `{ name, loc }` from
+`localStorage` under `favorites` and returns the new pinned state;
+`isFavorite(name, loc)` (called from `cardHtml`) determines each button's
+initial label. `renderFavorites()` rebuilds `#favorites` — a `.recent`-style
+chip row of `.fav-chip`s plus a "Clear favorites" button, shown only when
+non-empty — and is called on load and after every toggle.
+
+The existing delegated click listener on `#results` (added in v1.33.0 for
+`.copy-link`) also handles `.fav-toggle`: it toggles the favorite, updates
+the clicked button's text/`aria-pressed` in place (no full re-render), and
+returns early. Clicking a `.fav-chip` refills `#q`/`#loc` and re-runs
+`search()`, exactly like `.recent-chip`. `.fav-chip`/`.favorites-clear`/
+`.fav-toggle` all declare `width: auto; margin-top: 0` per the v1.25.1
+global-button-rule gotcha. Pure client-side, no new network dependency.
 
 ---
 
@@ -913,7 +936,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (67 cases, 293 assertions — all must pass):**
+**Required test cases (68 cases, 314 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -1001,6 +1024,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 65b | Borough comparison degrades gracefully | boro query (and mirror/proxy) all 500 → panel body reads "Couldn't load borough comparison." |
 | 66 | Accessible labels for `#q`/`#loc`/`#maps-input` (v1.32.0) | `label[for="q"]`, `label[for="loc"]`, `label[for="maps-input"]` all present with non-empty text, each `for` resolves to a real input id, and each label is visually hidden via `.sr-only` |
 | 67 | "Copy link to this search" button (v1.33.0) | `.copy-link` present on a non-empty result; click copies a `?q=...` URL via `navigator.clipboard.writeText` (stubbed); button text becomes "✓ Link copied" |
+| 68 | Favorites / pinned list (v1.34.0) | `#favorites` empty before any interaction; `.fav-toggle` shows "☆ Save" (`aria-pressed="false"`); click toggles to "★ Saved" (`aria-pressed="true"`) and adds a `.fav-chip` to `#favorites`; persists across reload; clicking `.fav-chip` refills `#q` and re-searches with `.fav-toggle` showing "★ Saved"; toggling off removes it; "Clear favorites" empties the list |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1140,7 +1164,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.33.0**
+Current: **v1.34.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1195,6 +1219,7 @@ Notable versions:
 - v1.31.0 — borough comparison: each card with a borough gains an opt-in "How does {Boro} compare?" panel (`boroCompareHtml`) that, on first open, runs the citywide `$group=grade` aggregate scoped to that borough (`loadBoroGradeDist`, cached per boro via `boroDistCache`) and shows "About N in 100 graded {Boro} restaurants are A. This one is graded X — in the majority/minority." The fetch is deferred to a user toggle via a single capturing `toggle` listener on `#results` (the event doesn't bubble), so a plain search makes no extra request and no existing card test is perturbed; degrades to "Couldn't load borough comparison." on failure. Completes the Tier-1/Tier-2 no-infra research backlog. Tests 65–65b added (65 cases, 284 assertions)
 - v1.32.0 — accessibility: `#q`, `#loc`, and `#maps-input` gain visually-hidden `<label for="...">` elements (`.sr-only`, clip-rect technique) mirroring their placeholder text, so screen readers announce a stable field name instead of relying on `placeholder` (which some AT skips, and which disappears once the field has a value). Markup/CSS only, no JS changes. Closes the documented Tier-4 a11y gap. Test 66 added (66 cases, 282 assertions)
 - v1.33.0 — "🔗 Copy link to this search" button: every non-empty `render()` result prepends a button whose `data-url` is the same `?q=Name&loc=Location` deep-link shape the app already reads on load, built from the current search name and `#loc` value; a delegated click listener on `#results` copies it via `navigator.clipboard.writeText` and flashes "✓ Link copied"/"Copy failed" for 1.5s. Pure client-side, no new dependency — gives any search result (manual, deep-link, or resolved Maps/share link) a one-tap shareable bookmark. Test 67 added (67 cases, 293 assertions)
+- v1.34.0 — favorites/pinned list: each card gains a `.fav-toggle` button ("☆ Save"/"★ Saved") in its `.meta` line, keyed on the restaurant's `dba`+`boro` (not the searched term, so individual chain locations pin separately); `toggleFavorite`/`isFavorite` persist `{name, loc}` pairs in `localStorage` under `favorites`, and `renderFavorites()` shows them as `.fav-chip` pills in a new `#favorites` row (mirroring the v1.23.0 `#recent` list, plus a "Clear favorites" button) — clicking a chip refills `#q`/`#loc` and re-searches. The existing v1.33.0 delegated `#results` click listener also handles `.fav-toggle` in place (no full re-render). Pure client-side, no new dependency. Test 68 added (68 cases, 314 assertions)
 
 ## Known-good Maps parsing baseline
 

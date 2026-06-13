@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 67 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 68 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 67-case Playwright test suite, fix any failures, and confirm 293/293 assertions pass.
+Run the full 68-case Playwright test suite, fix any failures, and confirm 314/314 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `293 tests: 293 passed, 0 failed`
+Expected output ends with: `314 tests: 314 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -533,6 +533,24 @@ real clipboard access is unavailable/permission-gated under `file://` + headless
 Assert `.copy-link` exists, click it, `waitForFunction(() => window.__copied !== null)`, assert
 `window.__copied` includes `q=MAZZAT`, and assert the button's `textContent` becomes
 `✓ Link copied`.
+
+### Favorites / pinned list (test 68, v1.34.0)
+Plain DOHMH search (`J([MAZZAT])`, `#q` fill + `#go` click, wait for `.card`). Assert `#favorites`
+is empty before any interaction, and `.fav-toggle` exists with `textContent === '☆ Save'` and
+`getAttribute('aria-pressed') === 'false'`. Click `.fav-toggle`; assert it becomes `★ Saved` /
+`aria-pressed="true"` and `#favorites` shows a `.fav-chip` whose text includes `MAZZAT`. Reload
+the page (same DOHMH mock) and assert the `.fav-chip` still shows `MAZZAT` (localStorage
+persistence). Click `.fav-chip`, wait for `.card`, assert `#q` is refilled with `MAZZAT` and the
+re-rendered `.fav-toggle` shows `★ Saved` / `aria-pressed="true"`. Click `.fav-toggle` again to
+un-favorite — assert it returns to `☆ Save` / `aria-pressed="false"` and `#favorites` is empty.
+Re-add a favorite, then click `.favorites-clear` and assert `#favorites` is empty again.
+
+**Mocking gotcha (from this test's authoring):** the harness's `J`/`TX`/`E` helpers must return
+full `route.fulfill()` option objects — `{ status, contentType, body: JSON.stringify(...) }` for
+`J`, `{ status: 200, contentType: 'text/plain', body }` for `TX`, and `{ status: 503,
+contentType: 'text/plain', body: 'error' }` for `E`. A `{ body: <object> }`-only shape (missing
+`status`/`contentType`, unstringified body) makes every `r.fulfill({...J(...)})` call hang
+indefinitely. `setupRoute` should read `resp.contentType ?? resp.ct` so both naming styles work.
 
 ## Step 4 — Iterate
 

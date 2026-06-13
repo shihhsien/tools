@@ -64,6 +64,11 @@
   .recent-chip { width: auto; margin-top: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding: 5px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
   .recent-clear { width: auto; margin-top: 0; font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
   .copy-link { width: auto; margin: 0 0 10px; font-size: 12px; padding: 6px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); font-weight: 500; }
+  /* === Favorites / pinned === */
+  .fav-chip { width: auto; margin-top: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding: 5px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
+  .favorites-clear { width: auto; margin-top: 0; font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
+  .fav-toggle { width: auto; margin: 0; padding: 0; font-size: 12px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
+  .fav-toggle[aria-pressed="true"] { color: var(--A); }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
@@ -214,6 +219,7 @@
 </div>
 
 <div id="recent" class="recent"></div>
+<div id="favorites" class="recent"></div>
 
 <div id="tip-wrap" style="display:none">
   <button id="tip-toggle" class="tip-toggle">&#9656; Use from Maps on iPhone</button>
@@ -245,7 +251,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.33.0</div>
+<div class="ver">v1.34.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -267,6 +273,7 @@ const mapsInput = document.getElementById('maps-input');
 const statusEl  = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const recentEl  = document.getElementById('recent');
+const favoritesEl = document.getElementById('favorites');
 const btn       = document.getElementById('go');
 const nearBtn   = document.getElementById('near');
 const osmAttrEl = document.getElementById('osm-attr');
@@ -673,6 +680,9 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     metaParts.push('<a href="' + htmlEsc('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(info.dba + ' ' + locStr)) + '" target="_blank" rel="noopener">Map ↗</a>');
     metaParts.push('<a href="' + htmlEsc('https://www.yelp.com/search?find_desc=' + encodeURIComponent(info.dba) + '&find_loc=' + encodeURIComponent(locStr)) + '" target="_blank" rel="noopener">Yelp ↗</a>');
     metaParts.push('<a href="' + htmlEsc('https://resy.com/cities/ny/venues?query=' + encodeURIComponent(info.dba)) + '" target="_blank" rel="noopener">Resy ↗</a>');
+    const favName = info.dba, favLoc = info.boro || '';
+    const fav = isFavorite(favName, favLoc);
+    metaParts.push('<button class="fav-toggle" data-name="' + htmlEsc(favName) + '" data-loc="' + htmlEsc(favLoc) + '" aria-pressed="' + fav + '">' + (fav ? '★ Saved' : '☆ Save') + '</button>');
   }
   const meta = metaParts.length ? '<div class="meta">' + metaParts.join(' \xb7 ') + '</div>' : '';
   return '<div class="card">'
@@ -780,6 +790,13 @@ function render(rows, name, originalName, addressHint) {
 // Delegated — #results is replaced wholesale by render(), so a static listener
 // on the container catches clicks on any (re)rendered .copy-link button.
 resultsEl.addEventListener('click', async e => {
+  const favBtn = e.target.closest('.fav-toggle');
+  if (favBtn) {
+    const fav = toggleFavorite(favBtn.dataset.name, favBtn.dataset.loc);
+    favBtn.textContent = fav ? '★ Saved' : '☆ Save';
+    favBtn.setAttribute('aria-pressed', fav);
+    return;
+  }
   const copyBtn = e.target.closest('.copy-link');
   if (!copyBtn) return;
   const original = copyBtn.textContent;
@@ -1215,6 +1232,57 @@ recentEl.addEventListener('click', e => {
 });
 
 renderRecent();
+
+// ---- Favorites / pinned ---------------------------------------------------
+// A separate, manually-curated localStorage list (vs. recent's automatic
+// history) — the user explicitly stars a restaurant to pin it for later.
+const FAV_KEY = 'favorites';
+
+function loadFavorites() {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY)) || []; } catch { return []; }
+}
+
+function isFavorite(name, loc) {
+  return loadFavorites().some(f => f.name === name && f.loc === loc);
+}
+
+function toggleFavorite(name, loc) {
+  if (!name) return false;
+  let list = loadFavorites();
+  const idx = list.findIndex(f => f.name === name && f.loc === loc);
+  let isFav;
+  if (idx >= 0) { list.splice(idx, 1); isFav = false; }
+  else { list.unshift({ name, loc }); isFav = true; }
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(list)); } catch {}
+  renderFavorites();
+  return isFav;
+}
+
+function renderFavorites() {
+  const list = loadFavorites();
+  if (!list.length) { favoritesEl.innerHTML = ''; return; }
+  favoritesEl.innerHTML = list.map((f, i) =>
+    '<button class="fav-chip" data-i="' + i + '">' + htmlEsc(f.name) + (f.loc ? ' \xb7 ' + htmlEsc(f.loc) : '') + '</button>'
+  ).join('') + '<button class="favorites-clear">Clear favorites</button>';
+}
+
+favoritesEl.addEventListener('click', e => {
+  const chip = e.target.closest('.fav-chip');
+  if (chip) {
+    const f = loadFavorites()[Number(chip.dataset.i)];
+    if (!f) return;
+    nameInput.value = f.name;
+    locInput.value = f.loc || '';
+    search();
+    return;
+  }
+  if (e.target.closest('.favorites-clear')) {
+    try { localStorage.removeItem(FAV_KEY); } catch {}
+    renderFavorites();
+  }
+});
+
+renderFavorites();
 
 btn.addEventListener('click', () => search());
 nearBtn.addEventListener('click', searchNearby);
