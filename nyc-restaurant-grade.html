@@ -229,7 +229,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.26.0</div>
+<div class="ver">v1.27.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -789,27 +789,60 @@ const COUNTY_BORO = {
   'bronx county': 'BRONX', 'richmond county': 'STATEN ISLAND'
 };
 
-// Reverse-geocode coordinates → "247 Smith Street, Brooklyn, NY, 11231" via
-// Nominatim (OpenStreetMap). Best-effort: recovers a street/borough/ZIP for a
-// resolved Maps link that has coordinates but no address (dropped-pin shares),
-// so chain disambiguation can still narrow same-named matches. Free, no key,
-// CORS-open on success (absent on 429 rate-limit → surfaces as a fetch error,
-// swallowed here). On any success the ODbL attribution footer is revealed.
+// Assemble "247 Smith Street, Brooklyn, NY, 11231" from parsed address parts.
+// Returns null when nothing usable was found, so the orchestrator can try the
+// next tier. Both geocoders are OSM-derived, so one ODbL attribution covers both.
+function buildGeoAddr(street, boro, county, zip) {
+  if (!street && !boro && !zip) return null;
+  const addr = [street, boro || county, 'NY', zip].filter(Boolean).join(', ');
+  return { addr, boro: boro || zip };
+}
+
+// Tier 1 — Nominatim (OpenStreetMap). 1 req/s; CORS-open on success but absent
+// on a 429 rate-limit (surfaces as a fetch error → throws → Photon takes over).
+async function viaNominatim(lat, lng) {
+  const res = await timeoutFetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng));
+  if (!res.ok) { dbg(`viaNominatim: HTTP ${res.status}`); throw 0; }
+  const a = (await res.json()).address || {};
+  const street = [a.house_number, a.road].filter(Boolean).join(' ');
+  const boro = boroFromAddr(a.borough || a.suburb || a.city_district || '') || COUNTY_BORO[(a.county || '').toLowerCase()] || '';
+  const r = buildGeoAddr(street, boro, a.county, a.postcode || '');
+  if (!r) { dbg('viaNominatim: ✗ no usable fields'); throw 0; }
+  dbg(`viaNominatim: ✓ addr="${r.addr}"`);
+  return r;
+}
+
+// Tier 2 — Photon (komoot, OSM-derived GeoJSON). Keyless, CORS-open, no hard
+// per-second cap — the fallback when Nominatim is rate-limited. Demo server, no
+// SLA, so it's still best-effort. Borough lives in `district`/`city`; ZIP in
+// `postcode`; county → borough map covers the "Kings County" case.
+async function viaPhoton(lat, lng) {
+  const res = await timeoutFetch('https://photon.komoot.io/reverse?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng));
+  if (!res.ok) { dbg(`viaPhoton: HTTP ${res.status}`); throw 0; }
+  const p = (((await res.json()).features || [])[0] || {}).properties || {};
+  const street = [p.housenumber, p.street || p.name].filter(Boolean).join(' ');
+  const boro = boroFromAddr(p.district || p.city || '') || COUNTY_BORO[(p.county || '').toLowerCase()] || '';
+  const r = buildGeoAddr(street, boro, p.county, p.postcode || '');
+  if (!r) { dbg('viaPhoton: ✗ no usable fields'); throw 0; }
+  dbg(`viaPhoton: ✓ addr="${r.addr}"`);
+  return r;
+}
+
+// Reverse-geocode coordinates → address, tiered Nominatim → Photon. Best-effort:
+// recovers a street/borough/ZIP for a resolved Maps link that has coordinates but
+// no address (dropped-pin shares), so chain disambiguation can still narrow
+// same-named matches. Each tier throws on failure so the next is tried; on any
+// success the ODbL attribution footer is revealed (both tiers are OSM data).
 async function reverseGeocode(lat, lng) {
   dbg(`reverseGeocode: ${lat},${lng}`);
-  try {
-    const res = await timeoutFetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng));
-    if (!res.ok) { dbg(`reverseGeocode: HTTP ${res.status}`); return null; }
-    const a = (await res.json()).address || {};
-    const street = [a.house_number, a.road].filter(Boolean).join(' ');
-    const boro = boroFromAddr(a.borough || a.suburb || a.city_district || '') || COUNTY_BORO[(a.county || '').toLowerCase()] || '';
-    const zip = a.postcode || '';
-    const addr = [street, boro || a.county, 'NY', zip].filter(Boolean).join(', ');
-    if (!street && !boro && !zip) { dbg('reverseGeocode: ✗ no usable fields'); return null; }
-    osmAttrEl.style.display = 'block';   // OSM data was used — show attribution
-    dbg(`reverseGeocode: ✓ addr="${addr}" boro="${boro || zip}"`);
-    return { addr, boro: boro || zip };
-  } catch (e) { dbg('reverseGeocode: ✗ ' + (e.message || e)); return null; }
+  for (const via of [viaNominatim, viaPhoton]) {
+    try {
+      const r = await via(lat, lng);
+      osmAttrEl.style.display = 'block';   // OSM data was used — show attribution
+      return r;
+    } catch (e) { dbg('reverseGeocode tier: ✗ ' + (e.message || e)); }
+  }
+  return null;
 }
 
 // Resolvers may return "Name, 123 St, Brooklyn, NY 11231" — keep the name, mine

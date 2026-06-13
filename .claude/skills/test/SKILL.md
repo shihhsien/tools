@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 57 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 58 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 57-case Playwright test suite, fix any failures, and confirm 234/234 assertions pass.
+Run the full 58-case Playwright test suite, fix any failures, and confirm 240/240 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 57 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 58 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `234 tests: 234 passed, 0 failed`
+Expected output ends with: `240 tests: 240 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -426,11 +426,26 @@ Assert: `nominatimHit === true`; exactly 1 `.card`; `#status` includes `matched 
 `.addr` includes `SMITH ST`; and `#osm-attr` visible
 (`await p.$eval('#osm-attr', el => getComputedStyle(el).display !== 'none')`).
 
-**Why other resolver tests don't need a Nominatim mock:** tests whose mapu mock returns a
+**Why other resolver tests don't need a geocoder mock:** tests whose mapu mock returns a
 name-only `@coords` URL (12, 15, 41, …) now also reach `reverseGeocode`, but
-`nominatim.openstreetmap.org` is unmocked → `setupRoute` aborts it → the fetch rejection is
-caught, `reverseGeocode` returns `null`, the card renders name-only, and no `pageerror`
-fires. Leave them unmocked.
+`nominatim.openstreetmap.org` **and** `photon.komoot.io` are both unmocked → `setupRoute`
+aborts them → each tier's fetch rejects → `reverseGeocode` returns `null`, the card renders
+name-only, and no `pageerror` fires. Leave them unmocked.
+
+### Photon reverse-geocode fallback (test 58, v1.27.0)
+`reverseGeocode` is tiered: Nominatim first, then Photon (`photon.komoot.io/reverse`) when
+Nominatim 429s. Identical setup to test 57 (reuse `MAZZAT_A`/`MAZZAT_B`, the name-only
+`@lat,lng` mapu mock, `microlink.io`/`jina.ai` → `E`), but:
+- `nominatim.openstreetmap.org` → `{ status: 429, ct: 'text/plain', body: 'rate limited' }`
+  (tier 1 fails).
+- Declare `let photonHit = false;` outside `setup`/`fn`. `photon.komoot.io` → function handler
+  `(r) => { photonHit = true; return r.fulfill({ ...J({ features: [{ properties: { housenumber:'247', street:'Smith Street', district:'Brooklyn', county:'Kings County', postcode:'11231' } }] }) }); }`
+  (note Photon's **GeoJSON** shape: `features[0].properties`).
+- `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`.
+
+Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })`.
+Assert: `photonHit === true` (Nominatim 429 → Photon fallback fired); exactly 1 `.card`;
+`#status` includes `matched by address`; `.addr` includes `SMITH ST`; `#osm-attr` visible.
 
 ## Step 4 — Iterate
 
