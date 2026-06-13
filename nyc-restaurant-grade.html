@@ -218,7 +218,7 @@
   <div class="about-body">
     <p>Grades reflect points for health-code violations found at inspection &mdash; <b>lower is better</b>. A&nbsp;=&nbsp;0&ndash;13&nbsp;points, B&nbsp;=&nbsp;14&ndash;27, C&nbsp;=&nbsp;28 or more.</p>
     <p><b>Critical</b> violations (pests, unsafe food temperatures, bare-hand contact) carry more points than upkeep issues, so one critical finding can move a grade more than several minor ones.</p>
-    <p>About <b>9 in 10</b> NYC restaurants score an A, so a B or C is genuinely worth noting. But an A right at 13 points is borderline &mdash; the <b>score matters as much as the letter</b>.</p>
+    <p>About <b><span id="a-rate">9 in 10</span></b> NYC restaurants score an A, so a B or C is genuinely worth noting. But an A right at 13 points is borderline &mdash; the <b>score matters as much as the letter</b>.</p>
     <p><b>&ldquo;Grade Pending&rdquo;</b> usually means a recent below-A inspection awaiting a re-inspection (often within about 30 days) or an open appeal &mdash; not a final grade.</p>
     <p><b>&ldquo;Closed by DOHMH&rdquo;</b> means a serious hazard (e.g. severe pests, no hot water); the restaurant can&rsquo;t reopen until it&rsquo;s fixed and the city re-approves.</p>
     <p>Inspections recur on a sliding schedule: roughly once a year for an A, more often (every few months) for a B or C.</p>
@@ -229,7 +229,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.28.0</div>
+<div class="ver">v1.29.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -254,6 +254,8 @@ const recentEl  = document.getElementById('recent');
 const btn       = document.getElementById('go');
 const nearBtn   = document.getElementById('near');
 const osmAttrEl = document.getElementById('osm-attr');
+const aboutEl   = document.getElementById('about');
+const aRateEl   = document.getElementById('a-rate');
 const DEBUG   = new URLSearchParams(location.search).has('debug');
 const debugEl = document.getElementById('debug-log');
 if (DEBUG) debugEl.style.display = 'block';
@@ -433,6 +435,29 @@ function loadViolCodes() {
     } catch { return {}; }
   })();
   return violCodePromise;
+}
+
+// Live citywide grade distribution — one cached aggregate query against the same
+// dataset (no new dependency). Fired lazily the first time the "What do these
+// grades mean?" panel is opened, so it never runs during a plain search and adds
+// no load-time request. On success it replaces the static "9 in 10" copy with the
+// real figure ("91 in 100"); on any failure the static copy stands.
+let gradeDistPromise = null;
+function loadGradeDist() {
+  if (!gradeDistPromise) gradeDistPromise = (async () => {
+    try {
+      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n')
+        + '&$where=' + encodeURIComponent("grade in ('A','B','C')") + '&$group=grade';
+      const rows = await getJSON(url);
+      const counts = { A: 0, B: 0, C: 0 };
+      for (const r of rows) { const g = String(r.grade || '').toUpperCase(); if (g in counts) counts[g] = Number(r.n) || 0; }
+      const total = counts.A + counts.B + counts.C;
+      if (!total) return null;
+      if (aRateEl) aRateEl.textContent = Math.round(counts.A / total * 100) + ' in 100';
+      return { ...counts, total };
+    } catch { return null; }
+  })();
+  return gradeDistPromise;
 }
 
 // ---- Rendering --------------------------------------------------------
@@ -1090,6 +1115,8 @@ renderRecent();
 
 btn.addEventListener('click', () => search());
 nearBtn.addEventListener('click', searchNearby);
+// First time the grades explainer is opened, fetch the real citywide A-rate.
+if (aboutEl) aboutEl.addEventListener('toggle', () => { if (aboutEl.open) loadGradeDist(); });
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
 mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });

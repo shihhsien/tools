@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (60 cases, 251 assertions)
+- `.claude/skills/test/` — Playwright test skill (61 cases, 260 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -639,6 +639,22 @@ search/resolve):
    the NYC Health grading FAQ. Facts are sourced from the June 2026 grading-semantics
    research run (see session transcript / the research notes above).
 
+### Live citywide grade distribution (v1.29.0)
+
+The panel's "About **9 in 10** NYC restaurants score an A" sentence wraps its quantity in
+`<span id="a-rate">9 in 10</span>`. The **first time the `#about` panel is opened**
+(an `aboutEl` `toggle` listener, gated on `aboutEl.open`), `loadGradeDist()` runs one cached
+aggregate query against the same dataset — `?$select=grade,count(*) as n&$where=grade in
+('A','B','C')&$group=grade` (built with `encodeURIComponent` on the SoQL, via `getJSON` so it
+inherits the v1.28.0 mirror/proxy failover) — and replaces the span text with the real figure
+("91 in 100"). It's **deliberately lazy**: firing on panel-open (not on load, not in
+`search()`) means the citywide query never runs during a plain lookup, so it adds no load-time
+request and **can't perturb any test's `43nn-pn8j` call counting**. Best-effort and cached via
+`gradeDistPromise` (like `violCodePromise`): a fetch error, non-200, or empty/zero total leaves
+the static "9 in 10" copy untouched. Only the about-panel figure is made live — the per-card
+`GRADE_CONTEXT.A` line keeps its static "9 in 10" wording (a card render must stay
+network-free beyond its own search).
+
 ## Violation-code categories (v1.18.0)
 
 Best-effort enrichment that labels each violation with a plain-English category. `loadViolCodes()`
@@ -834,7 +850,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (60 cases, 251 assertions — all must pass):**
+**Required test cases (61 cases, 260 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -910,6 +926,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 60 | getJSON failover — primary fails → data.ny.gov mirror serves it | primary host 500s; mirror (`data.ny.gov`) returns the row; `corsproxy.io` never hit; card renders |
 | 60b | getJSON failover — primary + mirror fail → corsproxy.io last resort | primary 500s, mirror 404s; proxy serves the row; card renders |
 | 60c | getJSON happy path — primary OK, no failover calls | primary returns 200; neither mirror nor proxy is touched |
+| 61 | Live citywide grade distribution replaces "9 in 10" on about-panel open | `#a-rate` is "9 in 10" before; dist query (`$group=grade`) NOT fired on load; opening `#about` fires it; `#a-rate` becomes "91 in 100" (910/1000) |
+| 61b | Grade-dist query doesn't interfere with a plain search | a normal search makes exactly 1 `43nn-pn8j` call; the `$group=grade` dist query never fires; card renders |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -954,6 +972,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the design-system test (test 56, v1.25.0): plain DOHMH search with `J([MAZZAT])` (single result so `.placard` renders). Before searching, assert `.brand-chip` textContent `=== 'A'` and `h1` textContent `=== 'NYC Restaurant Grade'`. Then `page.focus('#q')` and assert `getComputedStyle` `boxShadow !== 'none'` (the NYC-blue focus ring). After the card renders, assert `getComputedStyle(document.querySelector('.placard')).fontFamily` includes `Liberation Sans Narrow` — computed font-family reports the declared stack, so this holds even if the TTF doesn't load under `file://`.
 - For the Nominatim reverse-geocode test (test 57, v1.26.0): two same-name DOHMH fixtures (reuse test 51's `MAZZAT_A` = `building:'247', street:'SMITH ST'` and `MAZZAT_B` = `building:'500', street:'ATLANTIC AVE'`). Mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6782,-73.9929,17z' })` — a **name-only place path with `@lat,lng` but no comma-address**, so `splitPlace`'s `addr` is empty and the coordinate path fires. Mock `microlink.io`/`jina.ai` → `E`. Mock `nominatim.openstreetmap.org` with a flag handler (`nominatimHit = true`) returning `J({ address: { house_number:'247', road:'Smith Street', borough:'Brooklyn', county:'Kings County', state:'New York', postcode:'11231' } })`. Mock `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`. Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })` (resolver + Nominatim round-trips). Assert: `nominatimHit === true` (coords extracted and reverse-geocode called), exactly 1 `.card` (disambiguation narrowed), `#status` includes `matched by address`, `.addr` includes `SMITH ST` (the 247 location won), and `#osm-attr` is visible (`getComputedStyle(el).display !== 'none'` — attribution revealed on use). Declare `nominatimHit` outside `setup`/`fn`. **Note:** the existing resolver tests whose mapu mock returns a name-only `@coords` URL (e.g. tests 12/15/41) now also reach `reverseGeocode`, but `nominatim.openstreetmap.org` **and** `photon.komoot.io` are both unmocked there → `setupRoute` aborts them → each tier's fetch rejects → `reverseGeocode` returns `null` → card still renders name-only, no `pageerror`. Do not add geocoder mocks to those tests.
 - For the Photon reverse-geocode fallback test (test 58, v1.27.0): identical setup to test 57 (reuse `MAZZAT_A`/`MAZZAT_B`, name-only `@lat,lng` mapu mock, microlink/jina → `E`), but mock `nominatim.openstreetmap.org` → **HTTP 429** (`{ status: 429, ct: 'text/plain', body: 'rate limited' }`) so tier 1 fails, and mock `photon.komoot.io` with a flag handler (`photonHit = true`) returning the GeoJSON shape `J({ features: [{ properties: { housenumber:'247', street:'Smith Street', district:'Brooklyn', county:'Kings County', postcode:'11231' } }] })`. Mock `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`. Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })`. Assert: `photonHit === true` (Nominatim 429 → Photon fallback fired), exactly 1 `.card`, `#status` includes `matched by address`, `.addr` includes `SMITH ST`, and `#osm-attr` is visible. Declare `photonHit` outside `setup`/`fn`.
+- For the live grade-distribution tests (tests 61/61b, v1.29.0): the dist query hits the same `43nn-pn8j` host but is uniquely identifiable by `$group=grade` (which survives as the literal substring `group=grade` because only the `$select`/`$where` are `encodeURIComponent`-wrapped). Test 61: mock `43nn-pn8j` with a function handler that, when `u.includes('group=grade')`, sets `distHit=true` and returns `J([{grade:'A',n:'910'},{grade:'B',n:'70'},{grade:'C',n:'20'}])`, else returns `J([MAZZAT])`. After load assert `#a-rate` text === `9 in 10` and `!distHit` (lazy — not fired on load). Click `#about > summary`, `waitForFunction` until `#a-rate` text !== `9 in 10`, then assert `distHit` and `#a-rate` === `91 in 100` (910/1000 → 91%). Test 61b: same split handler but count non-dist `43nn-pn8j` calls in `searchCalls`; do a plain `#q`+`#go` search and assert `!distHit` (never fires for a search) and `searchCalls === 1` (the dist query adds no search-path request). **Note:** because the dist query only fires on `#about` open, no other test that counts `43nn-pn8j` calls is affected — they never open the panel.
 - For the getJSON failover tests (tests 60/60b/60c, v1.28.0): plain DOHMH search (`#q` fill + `#go`), but route the three hosts separately with hit-flags declared outside `setup`/`fn`. Test 60: `data.cityofnewyork.us` → HTTP 500, `data.ny.gov` (flag `mirrorHit`) → `J([MAZZAT])`, `corsproxy.io` (flag `proxyHit`) → also serves it; assert `mirrorHit && !proxyHit` (the official mirror is preferred over the proxy) and the card renders. Test 60b: `data.cityofnewyork.us` → 500, `data.ny.gov` → 404, `corsproxy.io` (flag) → `J([MAZZAT])`; assert `proxyHit` and the card renders (proxy is the last resort). Test 60c: `data.cityofnewyork.us` → `J([MAZZAT])`, mirror/proxy handlers set flags then `r.abort()`; assert neither was hit (primary success short-circuits — no regression). Note the mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver fetches are unaffected.
 - For the status re-announce test (test 59, v1.27.1): no mocks needed for the search path — exercise the empty-input guard, which calls `setStatus` directly with no intervening status change (a successful search interleaves a "Looking up…" status, so its result already differs from the prior text and re-announces naturally — the guard double-press is the genuine back-to-back-identical case). Build `ZWSP = String.fromCharCode(0x200B)` (don't type the literal char — Write/Edit can mangle invisible codepoints). Click `#go` with `#q` empty, assert `#status` text includes `Enter a restaurant name` and does NOT include `ZWSP`. Click `#go` again (still empty), assert the status now includes both `Enter a restaurant name` **and** `ZWSP` (the toggle appended it so the aria-live region re-announces). The substring checks elsewhere are unaffected because U+200B is invisible and `.includes()` on the visible text still matches.
 
@@ -1046,7 +1065,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.28.0**
+Current: **v1.29.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1096,6 +1115,7 @@ Notable versions:
 - v1.27.0 — Photon reverse-geocode fallback: `reverseGeocode` is now tiered — `viaNominatim` first, then `viaPhoton` (`photon.komoot.io/reverse`, komoot's keyless/CORS-open OSM geocoder) when Nominatim 429s (its 1 req/s cap surfaces as a CORS/fetch error). v1.26.0 gave up on a rate-limit; v1.27.0 falls back before giving up, then degrades silently if both tiers fail. A shared `buildGeoAddr(street, boro, county, zip)` helper assembles the address for both tiers; each tier throws on failure so the loop falls through. Both geocoders are OSM-derived, so the single `#osm-attr` ODbL attribution still covers them. Addresses the documented Nominatim-rate-limit weakness; the research notes flagged Photon as the natural second tier. Test 58 added (58 cases, 240 assertions)
 - v1.27.1 — accessibility: `setStatus` now toggles a trailing zero-width space (U+200B) when the new status text is identical to the last, so the `role="status"` aria-live region re-announces a repeated message (e.g. pressing "Look up" twice with an empty field) instead of staying silent for VoiceOver. The U+200B is invisible and harmless to the `.includes()` substring checks throughout the suite. Implements the documented a11y note. Test 59 added (59 cases, 243 assertions)
 - v1.28.0 — `getJSON` resilience: a three-tier failover (primary `data.cityofnewyork.us` → official `data.ny.gov` Socrata mirror → `corsproxy.io`) replaces the old two-tier primary→proxy path. The first-party NY State mirror (CORS-open, same dataset id/SoQL) is preferred over the third-party proxy, which itself blocklists some hosts. Only DOHMH calls (the `API` prefix) are host-swapped; resolver/CSV fetches are untouched. The mirror id is deploy-verify — if data.ny.gov doesn't host `43nn-pn8j`, `getJSON` falls through to the proxy, so no regression. Tests 60–60c added (60 cases, 251 assertions)
+- v1.29.0 — live citywide grade distribution: the "What do these grades mean?" panel's "About **9 in 10** NYC restaurants score an A" now shows the real figure ("91 in 100"). `loadGradeDist()` runs one cached `$group=grade` aggregate query against the same `43nn-pn8j` dataset (no new dependency, via `getJSON` so it inherits the mirror/proxy failover), fired **lazily on first open of the `#about` panel** so it never runs during a plain search and can't perturb any test's DOHMH call counting; degrades silently to the static copy on any failure. Tests 61–61b added (61 cases, 260 assertions)
 
 ## Known-good Maps parsing baseline
 

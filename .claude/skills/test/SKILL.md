@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 60 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 61 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 60-case Playwright test suite, fix any failures, and confirm 251/251 assertions pass.
+Run the full 61-case Playwright test suite, fix any failures, and confirm 260/260 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 60 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 61 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `251 tests: 251 passed, 0 failed`
+Expected output ends with: `260 tests: 260 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -473,6 +473,21 @@ outside `setup`/`fn`.
 
 The mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver
 fetches are unaffected.
+
+### Live grade distribution (tests 61/61b, v1.29.0)
+`loadGradeDist()` fires lazily on first open of the `#about` panel and replaces `#a-rate`
+("9 in 10") with the live citywide figure. The dist query hits `43nn-pn8j` but is uniquely
+identified by `group=grade` (only `$select`/`$where` are encodeURIComponent-wrapped, so
+`$group=grade` stays a literal substring).
+- **Test 61:** function handler on `43nn-pn8j` — when `u.includes('group=grade')` set
+  `distHit=true` and return `J([{grade:'A',n:'910'},{grade:'B',n:'70'},{grade:'C',n:'20'}])`,
+  else `J([MAZZAT])`. After load: `#a-rate` text === `9 in 10`, `!distHit` (lazy). Click
+  `#about > summary`, `waitForFunction` until `#a-rate` !== `9 in 10`, then assert `distHit`
+  and `#a-rate` === `91 in 100`.
+- **Test 61b:** same split handler, count non-dist `43nn-pn8j` calls. Plain `#q`+`#go` search;
+  assert `!distHit` and `searchCalls === 1` (no extra request on the search path).
+
+No other call-counting test is affected — they never open the `#about` panel.
 
 ## Step 4 — Iterate
 
