@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 61 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 64 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 61-case Playwright test suite, fix any failures, and confirm 260/260 assertions pass.
+Run the full 64-case Playwright test suite, fix any failures, and confirm 275/275 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 61 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 64 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `260 tests: 260 passed, 0 failed`
+Expected output ends with: `275 tests: 275 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -488,6 +488,20 @@ identified by `group=grade` (only `$select`/`$where` are encodeURIComponent-wrap
   assert `!distHit` and `searchCalls === 1` (no extra request on the search path).
 
 No other call-counting test is affected — they never open the `#about` panel.
+
+### History-derived insights (tests 62–64b, v1.30.0)
+Plain DOHMH searches; multi-row fixtures share one `camis` so `groupByRestaurant` folds them.
+All three derivations are pure client-side (no extra network).
+- **Test 62 (repeat badge):** two rows, same `violation_code:'04L'`, distinct `inspection_date`s
+  (latest + earlier). Assert `.viol-repeat` present (`{ state:'attached' }` — the `<details>` is
+  collapsed) and its text includes `repeat`. **Test 62b:** code only at the latest date → no
+  `.viol-repeat`.
+- **Test 63 (last-critical):** a `critical_flag:'Critical'` row at an *earlier* date + a
+  critical-free latest row. Assert `.last-critical` present, text includes `Last critical`.
+  **Test 63b:** latest inspection itself has the `Critical` flag → no `.last-critical`.
+- **Test 64 (A-consistency):** three rows, distinct dates, grades A/B/A. Assert
+  `.grade-consistency` text === `Grade A at 2 of 3 recent inspections`. **Test 64b:** single
+  inspection → no `.grade-consistency`.
 
 ## Step 4 — Iterate
 

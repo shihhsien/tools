@@ -155,7 +155,11 @@
   .viol-ncrit { background: var(--line); color: var(--muted); }
   .viol-code { font-size: 10px; color: var(--gray); font-family: ui-monospace,monospace; margin-left: 4px; }
   .viol-cat { font-size: 10px; color: var(--muted); margin-left: 6px; }
+  .viol-repeat { font-size: 10px; font-weight: 600; color: var(--C); margin-left: 6px; }
   .viol-desc { font-size: 12px; color: var(--text); line-height: 1.45; }
+  /* === History-derived insights (client-side, no extra network) === */
+  .grade-consistency { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .last-critical { font-size: 12px; color: var(--muted); margin-top: 8px; }
   /* === Grade context (plain-English meaning under the grade line) === */
   .grade-ctx { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
   /* === History === */
@@ -229,7 +233,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.29.0</div>
+<div class="ver">v1.30.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -473,9 +477,21 @@ function groupByRestaurant(rows) {
   }
   for (const g of Object.values(byId)) {
     const latestDate = g.latest.inspection_date;
+    // Codes cited at an *earlier* inspection — used to flag repeat offenders below.
+    const priorDates = {};   // violation_code -> Set of earlier inspection_dates
+    for (const r of g.allRows) {
+      if (r.violation_code && r.inspection_date && r.inspection_date < latestDate)
+        (priorDates[r.violation_code] || (priorDates[r.violation_code] = new Set())).add(r.inspection_date);
+    }
     g.violations = g.allRows
       .filter(r => r.inspection_date === latestDate && r.violation_description)
-      .map(r => ({ desc: r.violation_description, flag: r.critical_flag, code: r.violation_code }));
+      .map(r => ({ desc: r.violation_description, flag: r.critical_flag, code: r.violation_code,
+                   repeat: r.violation_code && priorDates[r.violation_code] ? priorDates[r.violation_code].size : 0 }));
+    // Most recent critical violation across all inspections (any date).
+    const crit = g.allRows
+      .filter(r => r.critical_flag === 'Critical' && r.inspection_date)
+      .sort((a, b) => b.inspection_date.localeCompare(a.inspection_date));
+    g.lastCritical = crit[0] || null;
     const byDate = {};
     for (const r of g.allRows) {
       if (!r.inspection_date) continue;
@@ -539,7 +555,8 @@ function violationsHtml(violations) {
     const codeHtml = v.code ? '<span class="viol-code">' + htmlEsc(v.code) + '</span>' : '';
     const cat = violCodeMap[String(v.code || '').toUpperCase().trim()] || '';
     const catHtml = cat ? '<span class="viol-cat">' + htmlEsc(cat) + '</span>' : '';
-    return '<div class="viol-item">' + flagHtml + codeHtml + catHtml + '<div class="viol-desc">' + htmlEsc(v.desc) + '</div></div>';
+    const repeatHtml = v.repeat ? '<span class="viol-repeat" title="Also cited at ' + v.repeat + ' earlier inspection' + (v.repeat > 1 ? 's' : '') + '">↻ repeat</span>' : '';
+    return '<div class="viol-item">' + flagHtml + codeHtml + catHtml + repeatHtml + '<div class="viol-desc">' + htmlEsc(v.desc) + '</div></div>';
   }).join('');
   return '<details class="viols"><summary class="viols-summary">' + htmlEsc(countLabel) + '</summary><div class="viols-body">' + items + '</div></details>';
 }
@@ -575,12 +592,30 @@ function historyHtml(history) {
   return '<details class="hist-wrap"><summary class="hist-summary">Inspection history</summary><div class="hist-body">' + rows + '</div></details>';
 }
 
+// "Last critical violation: DATE · none at the latest inspection" — shown only when the
+// most recent critical predates the latest inspection (so the latest visit was critical-free),
+// a reassuring signal that a past hazard was resolved. Derived from already-fetched rows.
+function lastCriticalHtml(lastCritical, latestDate) {
+  if (!lastCritical || lastCritical.inspection_date === latestDate) return '';
+  return '<div class="last-critical">Last critical violation: ' + fmtDate(lastCritical.inspection_date) + ' \xb7 none at the latest inspection</div>';
+}
+
+// "Grade A at N of M recent inspections" — consistency across the (≤6) history window.
+// Pure client-side count of graded rows; needs ≥2 graded inspections to be meaningful.
+function gradeConsistencyHtml(history) {
+  if (!history || history.length < 2) return '';
+  const graded = history.filter(r => r.grade);
+  if (graded.length < 2) return '';
+  const aCount = graded.filter(r => r.grade === 'A').length;
+  return '<div class="grade-consistency">Grade A at ' + aCount + ' of ' + graded.length + ' recent inspections</div>';
+}
+
 function closureBannerHtml(latestClosure, currentlyClosed) {
   if (!currentlyClosed || !latestClosure) return '';
   return '<div class="closure-banner">⚠ Closed by DOHMH \xb7 ' + fmtDate(latestClosure.inspection_date) + '</div>';
 }
 
-function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, dist }) {
+function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, lastCritical, dist }) {
   const grade = graded ? graded.grade : null;
   const addr = htmlEsc(((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim());
   const gradeLine = graded
@@ -614,8 +649,10 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + ctx
     + scoreBar
     + trendHtml(history)
+    + gradeConsistencyHtml(history)
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
     + violationsHtml(violations)
+    + lastCriticalHtml(lastCritical, latest.inspection_date)
     + historyHtml(history)
     + '</div>';
 }
