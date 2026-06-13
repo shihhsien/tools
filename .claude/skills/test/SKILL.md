@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 68 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 69 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 68-case Playwright test suite, fix any failures, and confirm 314/314 assertions pass.
+Run the full 69-case Playwright test suite, fix any failures, and confirm 317/317 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `314 tests: 314 passed, 0 failed`
+Expected output ends with: `317 tests: 317 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -551,6 +551,36 @@ full `route.fulfill()` option objects — `{ status, contentType, body: JSON.str
 contentType: 'text/plain', body: 'error' }` for `E`. A `{ body: <object> }`-only shape (missing
 `status`/`contentType`, unstringified body) makes every `r.fulfill({...J(...)})` call hang
 indefinitely. `setupRoute` should read `resp.contentType ?? resp.ct` so both naming styles work.
+
+### Multi-result sort (test 69, v1.35.0)
+Three fixtures sharing a `dba` substring but distinct full names — `AAA PLACE` (grade C, score
+30), `BBB PLACE` (grade A, score 3), `CCC PLACE` (grade B, score 15), each with a distinct
+`camis` — mocked via `J([AAA, BBB, CCC])` for a search on "PLACE" (all three match, none carry
+`dist`). Wait for `.card`, then assert `.sort-row` and `#sort-select` are present, and
+`#sort-select option` values are exactly `['default','grade-asc','grade-desc','name']` (no
+`distance` option). Assert `.name` order is `[AAA, BBB, CCC]` (fetch order) by default.
+`page.selectOption('#sort-select', 'grade-asc')` → assert order `[BBB, CCC, AAA]` (A, B, C).
+`page.selectOption('#sort-select', 'name')` → assert order `[AAA, BBB, CCC]` (alphabetical).
+Then a separate single-result search (`J([MAZZAT])`) asserts `.sort-row` is absent.
+
+**General fix-notes from the v1.35.0 test-suite rewrite** (the app code needed zero changes —
+all fixes were in `test.mjs`; useful if rewriting the harness from scratch again):
+- **Tests 60/60b/60c (getJSON failover):** mock `corsproxy.io` BEFORE `data.ny.gov`/
+  `data.cityofnewyork.us` in the route-pattern list — pattern order matters since `setupRoute`
+  checks patterns in order and `corsproxy.io` URLs can also contain the other hostnames as a
+  query param substring.
+- **Test 23 (Firebase junk-title):** the `jina.ai` mock body must be `TX('')` (an empty string),
+  not a `'Title: \nURL Source: \n\n'` placeholder — the latter parses as a non-empty title and
+  defeats the `JUNK_TITLE` rejection.
+- **Test 25 (iOS tip):** the tip container's id is `#tip-wrap`, not `#tip` — a typo'd selector
+  silently matches nothing and the tip-visibility assertions pass vacuously (both "visible" and
+  "hidden" checks on a non-existent element can read as falsy).
+- **Test 45 (violation category):** `.viol-cat` lives inside the collapsed `.viols` `<details>`.
+  `page.waitForSelector('.viol-cat')` needs `{ state: 'attached' }` — the default `visible`
+  state never resolves for a hidden-but-present element.
+- **Test 48 (near me):** the "FAR PLACE" fixture's coordinates must still be within
+  `NEAR_RADIUS` (300 m) of the mocked position — just farther than "NEAR PLACE" — otherwise it's
+  filtered out entirely and the nearest-first ordering assertion has only one card to compare.
 
 ## Step 4 — Iterate
 

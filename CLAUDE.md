@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (68 cases, 314 assertions)
+- `.claude/skills/test/` — Playwright test skill (69 cases, 317 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -404,6 +404,22 @@ returns early. Clicking a `.fav-chip` refills `#q`/`#loc` and re-runs
 `search()`, exactly like `.recent-chip`. `.fav-chip`/`.favorites-clear`/
 `.fav-toggle` all declare `width: auto; margin-top: 0` per the v1.25.1
 global-button-rule gotcha. Pure client-side, no new network dependency.
+
+### Multi-result sort (v1.35.0)
+
+When `render()` has more than one group, it prepends a `.sort-row` —
+a `<select id="sort-select">` with options **As found** (default, the
+DOHMH/address-match order), **Grade: best first** / **Grade: worst first**
+(`gradeRank`: A=0, B=1, C=2, pending=3, tie-broken by score), **Name (A-Z)**
+(`info.dba`), and — only when every group carries a `dist` (i.e. the
+v1.20.0 "near me" results) — **Distance: nearest first**. `render()` stashes
+the post-disambiguation `groups` array in module-level `currentGroups` and
+wraps the card list in `<div id="cards-wrap">`. A delegated `change` listener
+on `#results` re-sorts `currentGroups` via `sortGroups(groups, mode)` and
+replaces only `#cards-wrap`'s `innerHTML` — the sort control, copy-link
+button, and (absent, since `groups.length > 1`) hero placard are untouched.
+Pure client-side re-ordering of already-fetched rows; no new request, no
+change to single-result rendering (`.sort-row` is omitted entirely).
 
 ---
 
@@ -936,7 +952,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (68 cases, 314 assertions — all must pass):**
+**Required test cases (69 cases, 317 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -1025,6 +1041,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 66 | Accessible labels for `#q`/`#loc`/`#maps-input` (v1.32.0) | `label[for="q"]`, `label[for="loc"]`, `label[for="maps-input"]` all present with non-empty text, each `for` resolves to a real input id, and each label is visually hidden via `.sr-only` |
 | 67 | "Copy link to this search" button (v1.33.0) | `.copy-link` present on a non-empty result; click copies a `?q=...` URL via `navigator.clipboard.writeText` (stubbed); button text becomes "✓ Link copied" |
 | 68 | Favorites / pinned list (v1.34.0) | `#favorites` empty before any interaction; `.fav-toggle` shows "☆ Save" (`aria-pressed="false"`); click toggles to "★ Saved" (`aria-pressed="true"`) and adds a `.fav-chip` to `#favorites`; persists across reload; clicking `.fav-chip` refills `#q` and re-searches with `.fav-toggle` showing "★ Saved"; toggling off removes it; "Clear favorites" empties the list |
+| 69 | Multi-result sort (v1.35.0) | 3-result search shows `.sort-row`/`#sort-select` with `default`/`grade-asc`/`grade-desc`/`name` options (no `distance`, no `dist` data); default order is fetch order; `grade-asc` re-orders best-grade-first; `name` re-orders A-Z; single-result search has no `.sort-row` |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1074,6 +1091,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the live grade-distribution tests (tests 61/61b, v1.29.0): the dist query hits the same `43nn-pn8j` host but is uniquely identifiable by `$group=grade` (which survives as the literal substring `group=grade` because only the `$select`/`$where` are `encodeURIComponent`-wrapped). Test 61: mock `43nn-pn8j` with a function handler that, when `u.includes('group=grade')`, sets `distHit=true` and returns `J([{grade:'A',n:'910'},{grade:'B',n:'70'},{grade:'C',n:'20'}])`, else returns `J([MAZZAT])`. After load assert `#a-rate` text === `9 in 10` and `!distHit` (lazy — not fired on load). Click `#about > summary`, `waitForFunction` until `#a-rate` text !== `9 in 10`, then assert `distHit` and `#a-rate` === `91 in 100` (910/1000 → 91%). Test 61b: same split handler but count non-dist `43nn-pn8j` calls in `searchCalls`; do a plain `#q`+`#go` search and assert `!distHit` (never fires for a search) and `searchCalls === 1` (the dist query adds no search-path request). **Note:** because the dist query only fires on `#about` open, no other test that counts `43nn-pn8j` calls is affected — they never open the panel.
 - For the getJSON failover tests (tests 60/60b/60c, v1.28.0): plain DOHMH search (`#q` fill + `#go`), but route the three hosts separately with hit-flags declared outside `setup`/`fn`. Test 60: `data.cityofnewyork.us` → HTTP 500, `data.ny.gov` (flag `mirrorHit`) → `J([MAZZAT])`, `corsproxy.io` (flag `proxyHit`) → also serves it; assert `mirrorHit && !proxyHit` (the official mirror is preferred over the proxy) and the card renders. Test 60b: `data.cityofnewyork.us` → 500, `data.ny.gov` → 404, `corsproxy.io` (flag) → `J([MAZZAT])`; assert `proxyHit` and the card renders (proxy is the last resort). Test 60c: `data.cityofnewyork.us` → `J([MAZZAT])`, mirror/proxy handlers set flags then `r.abort()`; assert neither was hit (primary success short-circuits — no regression). Note the mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver fetches are unaffected.
 - For the status re-announce test (test 59, v1.27.1): no mocks needed for the search path — exercise the empty-input guard, which calls `setStatus` directly with no intervening status change (a successful search interleaves a "Looking up…" status, so its result already differs from the prior text and re-announces naturally — the guard double-press is the genuine back-to-back-identical case). Build `ZWSP = String.fromCharCode(0x200B)` (don't type the literal char — Write/Edit can mangle invisible codepoints). Click `#go` with `#q` empty, assert `#status` text includes `Enter a restaurant name` and does NOT include `ZWSP`. Click `#go` again (still empty), assert the status now includes both `Enter a restaurant name` **and** `ZWSP` (the toggle appended it so the aria-live region re-announces). The substring checks elsewhere are unaffected because U+200B is invisible and `.includes()` on the visible text still matches.
+- For the multi-result sort test (test 69, v1.35.0): three fixtures sharing a query term but distinct `dba`s — `AAA PLACE` (grade C, score 30), `BBB PLACE` (grade A, score 3), `CCC PLACE` (grade B, score 15) — mocked via `J([AAA, BBB, CCC])` for a search on "PLACE" (all three match). None carry a `dist` field. Wait for `.card`, then assert `.sort-row` and `#sort-select` are present, and `#sort-select option` values are exactly `default`/`grade-asc`/`grade-desc`/`name` (no `distance` option, since no group has `dist`). Assert default `.name` order is `[AAA, BBB, CCC]` (fetch order). `page.selectOption('#sort-select', 'grade-asc')` → assert order `[BBB, CCC, AAA]` (A, B, C by `gradeRank`). `page.selectOption('#sort-select', 'name')` → assert order `[AAA, BBB, CCC]` (alphabetical). Then a separate plain single-result search (`J([MAZZAT])`) asserts `.sort-row` is absent (`groups.length === 1`).
 
 **Critical gotcha:** The Edit tool may silently replace ASCII straight apostrophes (`'` U+0027) with Unicode curly quotes (`'`/`'` U+2018/U+2019) in JS string literals and regex patterns. This causes an "Invalid or unexpected token" syntax error that breaks the whole page. After any edit to the `search()` function, verify with:
 ```js
@@ -1164,7 +1182,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.34.0**
+Current: **v1.35.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1220,6 +1238,7 @@ Notable versions:
 - v1.32.0 — accessibility: `#q`, `#loc`, and `#maps-input` gain visually-hidden `<label for="...">` elements (`.sr-only`, clip-rect technique) mirroring their placeholder text, so screen readers announce a stable field name instead of relying on `placeholder` (which some AT skips, and which disappears once the field has a value). Markup/CSS only, no JS changes. Closes the documented Tier-4 a11y gap. Test 66 added (66 cases, 282 assertions)
 - v1.33.0 — "🔗 Copy link to this search" button: every non-empty `render()` result prepends a button whose `data-url` is the same `?q=Name&loc=Location` deep-link shape the app already reads on load, built from the current search name and `#loc` value; a delegated click listener on `#results` copies it via `navigator.clipboard.writeText` and flashes "✓ Link copied"/"Copy failed" for 1.5s. Pure client-side, no new dependency — gives any search result (manual, deep-link, or resolved Maps/share link) a one-tap shareable bookmark. Test 67 added (67 cases, 293 assertions)
 - v1.34.0 — favorites/pinned list: each card gains a `.fav-toggle` button ("☆ Save"/"★ Saved") in its `.meta` line, keyed on the restaurant's `dba`+`boro` (not the searched term, so individual chain locations pin separately); `toggleFavorite`/`isFavorite` persist `{name, loc}` pairs in `localStorage` under `favorites`, and `renderFavorites()` shows them as `.fav-chip` pills in a new `#favorites` row (mirroring the v1.23.0 `#recent` list, plus a "Clear favorites" button) — clicking a chip refills `#q`/`#loc` and re-searches. The existing v1.33.0 delegated `#results` click listener also handles `.fav-toggle` in place (no full re-render). Pure client-side, no new dependency. Test 68 added (68 cases, 314 assertions)
+- v1.35.0 — multi-result client-side sort: when `render()` has more than one group, a `.sort-row`/`<select id="sort-select">` (As found / Grade: best first / Grade: worst first / Name A-Z, plus Distance: nearest first when every group has a `dist`) lets the user re-order the cards without re-querying DOHMH. `render()` stashes `groups` in module-level `currentGroups` and wraps the cards in `#cards-wrap`; a delegated `change` listener on `#results` calls `sortGroups(currentGroups, mode)` and replaces only `#cards-wrap`. Single-result views omit `.sort-row` entirely. Pure client-side, no new dependency. Test 69 added (69 cases, 317 assertions)
 
 ## Known-good Maps parsing baseline
 

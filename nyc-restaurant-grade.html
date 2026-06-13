@@ -69,6 +69,9 @@
   .favorites-clear { width: auto; margin-top: 0; font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
   .fav-toggle { width: auto; margin: 0; padding: 0; font-size: 12px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
   .fav-toggle[aria-pressed="true"] { color: var(--A); }
+  /* === Multi-result sort control === */
+  .sort-row { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+  .sort-row select { font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
@@ -251,7 +254,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.34.0</div>
+<div class="ver">v1.35.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -757,6 +760,48 @@ function scoreAddressMatch(addr, info) {
   return score;
 }
 
+// Multi-result client-side sort. Lower grade rank = better (A < B < C < pending).
+// `currentGroups` holds the last-rendered groups so the sort-select change handler
+// can re-order and re-render the cards without re-querying DOHMH.
+let currentGroups = [];
+
+function gradeRank(grade) {
+  return grade === 'A' ? 0 : grade === 'B' ? 1 : grade === 'C' ? 2 : 3;
+}
+
+function sortGroups(groups, mode) {
+  const copy = groups.slice();
+  const score = g => Number(g.graded?.score ?? g.latest.score ?? 0) || 0;
+  switch (mode) {
+    case 'grade-asc':
+      copy.sort((a, b) => gradeRank(a.graded?.grade) - gradeRank(b.graded?.grade) || score(a) - score(b));
+      break;
+    case 'grade-desc':
+      copy.sort((a, b) => gradeRank(b.graded?.grade) - gradeRank(a.graded?.grade) || score(b) - score(a));
+      break;
+    case 'name':
+      copy.sort((a, b) => (a.info.dba || '').localeCompare(b.info.dba || ''));
+      break;
+    case 'distance':
+      copy.sort((a, b) => (a.dist ?? Infinity) - (b.dist ?? Infinity));
+      break;
+  }
+  return copy;
+}
+
+function sortControlHtml(groups) {
+  const options = [
+    ['default', 'As found'],
+    ['grade-asc', 'Grade: best first'],
+    ['grade-desc', 'Grade: worst first'],
+    ['name', 'Name (A-Z)'],
+  ];
+  if (groups.some(g => g.dist != null)) options.push(['distance', 'Distance: nearest first']);
+  return '<div class="sort-row"><label for="sort-select">Sort</label> <select id="sort-select">'
+    + options.map(([v, l]) => '<option value="' + v + '">' + htmlEsc(l) + '</option>').join('')
+    + '</select></div>';
+}
+
 // Returns the number of restaurants rendered (0 on no results), so callers
 // like onShare can fall back to URL resolution when a name search finds nothing.
 // `addressHint`, when given, narrows multiple same-name matches down to the one
@@ -766,6 +811,7 @@ function render(rows, name, originalName, addressHint) {
   if (!groups.length) {
     setStatus(`No active record for "${name}". Try a shorter name, drop the location, or check spelling.`);
     resultsEl.innerHTML = '';
+    currentGroups = [];
     return 0;
   }
   let note = originalName ? ` · shortened from "${originalName}"` : '';
@@ -777,15 +823,26 @@ function render(rows, name, originalName, addressHint) {
     }
   }
   setStatus(`${groups.length} match(es) · official data${note}`);
+  currentGroups = groups;
   const hero = groups.length === 1 ? placardHtml(groups[0].graded?.grade ?? null) : '';
+  const sortControl = groups.length > 1 ? sortControlHtml(groups) : '';
   const shareParams = new URLSearchParams({ q: name });
   const shareLoc = locInput.value.trim();
   if (shareLoc) shareParams.set('loc', shareLoc);
   const shareUrl = `${location.origin}${location.pathname}?${shareParams}`;
   const copyBtn = `<button class="copy-link" data-url="${htmlEsc(shareUrl)}">&#128279; Copy link to this search</button>`;
-  resultsEl.innerHTML = copyBtn + hero + groups.map(cardHtml).join('');
+  resultsEl.innerHTML = copyBtn + sortControl + hero + '<div id="cards-wrap">' + groups.map(cardHtml).join('') + '</div>';
   return groups.length;
 }
+
+// Delegated — re-orders the last-rendered groups and replaces only #cards-wrap,
+// leaving the sort control's own selection and the copy-link/hero untouched.
+resultsEl.addEventListener('change', e => {
+  if (e.target.id !== 'sort-select') return;
+  const wrap = resultsEl.querySelector('#cards-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = sortGroups(currentGroups, e.target.value).map(cardHtml).join('');
+});
 
 // Delegated — #results is replaced wholesale by render(), so a static listener
 // on the container catches clicks on any (re)rendered .copy-link button.
