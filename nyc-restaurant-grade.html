@@ -229,11 +229,15 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.27.1</div>
+<div class="ver">v1.28.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
 const API = 'https://data.cityofnewyork.us/resource/43nn-pn8j.json';
+// Official NY State Socrata mirror of the same dataset/id, CORS-open — a free,
+// first-party failover preferred over the third-party proxy. (Deploy-verify: the
+// sandbox can't confirm the id; it degrades to the proxy if the mirror 404s.)
+const MIRROR = 'https://data.ny.gov/resource/43nn-pn8j.json';
 const PROXY = 'https://corsproxy.io/?url=';
 const MAPS_HOSTS = /google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i;
 // Official NYC Health violation-code reference (keyless, CORS-open via raw.githubusercontent).
@@ -364,6 +368,16 @@ async function getJSON(url) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   } catch {
+    // Tier 2: official NY State Socrata mirror (CORS-open) — same id/SoQL, just a
+    // different host. Preferred over the third-party proxy; only DOHMH calls (the
+    // API prefix) are swapped, never resolver/CSV fetches.
+    if (url.startsWith(API)) {
+      try {
+        const res = await fetch(MIRROR + url.slice(API.length));
+        if (res.ok) return res.json();
+      } catch { /* fall through to the proxy */ }
+    }
+    // Tier 3: last-resort third-party CORS proxy.
     const res = await fetch(PROXY + encodeURIComponent(url));
     if (!res.ok) throw new Error('HTTP ' + res.status + ' (proxy)');
     return res.json();

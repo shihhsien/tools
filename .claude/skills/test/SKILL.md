@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 59 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 60 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 59-case Playwright test suite, fix any failures, and confirm 243/243 assertions pass.
+Run the full 60-case Playwright test suite, fix any failures, and confirm 251/251 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 59 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 60 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `243 tests: 243 passed, 0 failed`
+Expected output ends with: `251 tests: 251 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -458,6 +458,21 @@ drop it). Click `#go` with `#q` empty; assert `#status` text includes `Enter a r
 and does NOT include `ZWSP`. Click `#go` again (still empty); assert the status now includes
 both `Enter a restaurant name` **and** `ZWSP`. U+200B is invisible, so every other test's
 visible-substring `.includes()` checks are unaffected.
+
+### getJSON failover (tests 60/60b/60c, v1.28.0)
+`getJSON` is three-tier: primary `data.cityofnewyork.us` → `data.ny.gov` mirror → `corsproxy.io`.
+Plain DOHMH search (`#q` fill + `#go`); route the three hosts separately with hit-flags declared
+outside `setup`/`fn`.
+- **Test 60:** `data.cityofnewyork.us` → HTTP 500; `data.ny.gov` (flag `mirrorHit`) → `J([MAZZAT])`;
+  `corsproxy.io` (flag `proxyHit`) → also serves it. Assert `mirrorHit && !proxyHit` (mirror
+  preferred over proxy) and the card renders.
+- **Test 60b:** `data.cityofnewyork.us` → 500; `data.ny.gov` → 404; `corsproxy.io` (flag) →
+  `J([MAZZAT])`. Assert `proxyHit` and the card renders (proxy is last resort).
+- **Test 60c:** `data.cityofnewyork.us` → `J([MAZZAT])`; mirror/proxy handlers set their flag then
+  `r.abort()`. Assert neither was hit (primary success short-circuits — no regression).
+
+The mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver
+fetches are unaffected.
 
 ## Step 4 — Iterate
 
