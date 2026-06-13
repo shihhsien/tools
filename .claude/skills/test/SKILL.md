@@ -5,7 +5,7 @@ description: Run the full Playwright test suite for nyc-restaurant-grade.html. W
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 56-case Playwright test suite, fix any failures, and confirm 227/227 assertions pass.
+Run the full 56-case Playwright test suite, fix any failures, and confirm 228/228 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `227 tests: 227 passed, 0 failed`
+Expected output ends with: `228 tests: 228 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -350,17 +350,21 @@ breaking every manual search (tests 5b/31 etc. would time out waiting for `.card
 If a future change reintroduces this, those multi-result tests will fail with
 "addr.toUpperCase is not a function" surfaced via `setError`.
 
-### Recently-searched list (test 52, v1.23.0)
+### Recently-searched list (test 52, v1.23.0, updated v1.25.1)
 Plain DOHMH search with `J([MAZZAT])`. Sequence:
 1. Before any search, `#recent` is empty: `(await p.$eval('#recent', el => el.innerHTML.trim())) === ''`.
 2. Fill `#q` with `MAZZAT`, click `#go`, wait for `.card`, then `waitForSelector('.recent-chip')`
    (the chip render happens synchronously inside `search()`'s success path but waiting is
    cheap insurance) — assert its `textContent === 'MAZZAT'`.
-3. `page.reload({ waitUntil: 'load' })`, wait for `.recent-chip` again, assert it still
+3. Assert the chip is a compact pill, not a full-width bar:
+   `await p.$eval('.recent-chip', el => el.offsetWidth < document.getElementById('recent').offsetWidth / 2)`
+   — guards the v1.25.1 `width: auto; margin-top: 0` override on `.recent-chip`, without
+   which the global `button { width: 100% }` rule makes every chip span the whole row.
+4. `page.reload({ waitUntil: 'load' })`, wait for `.recent-chip` again, assert it still
    reads `MAZZAT` — proves `localStorage['recent-searches']` persistence across loads.
-4. Clear `#q`, click `.recent-chip`, wait for `.card`, assert `#q` value is now `MAZZAT`
+5. Clear `#q`, click `.recent-chip`, wait for `.card`, assert `#q` value is now `MAZZAT`
    (clicking a chip refills the input and re-searches).
-5. Click `.recent-clear`, assert `#recent` is empty again.
+6. Click `.recent-clear`, assert `#recent` is empty again.
 
 ### `&` in name from `?q=` URL (test 53, v1.23.1)
 Trigger `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` via `triggerMaps`. Mock

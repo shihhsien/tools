@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (56 cases, 227 assertions)
+- `.claude/skills/test/` — Playwright test skill (56 cases, 228 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -299,6 +299,12 @@ since `name` is already uppercased) and caps the list before re-rendering.
 Clicking a `.recent-chip` refills `#q`/`#loc` and re-runs `search()`; a
 "Clear recent" button (rendered alongside the chips, only when the list is
 non-empty) removes the `localStorage` key. All rendering goes through `htmlEsc`.
+
+Chips render as compact inline pills that wrap (`.recent` is `flex-wrap: wrap`).
+`.recent-chip` (and `.recent-clear`) must declare `width: auto; margin-top: 0` —
+the app's global `button { width: 100%; margin-top: 10px }` rule otherwise makes
+every chip a full-width stacked bar (the v1.25.1 bug). Long names are capped at
+`max-width: 180px` with ellipsis so one entry can't monopolise a row.
 This is purely local/client-side — no new network dependency — and is the
 underlying motivation for the v1.23.0 "Resy ↗" review link (below): both let
 the user quickly act on a place they've already looked up.
@@ -761,7 +767,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (56 cases, 227 assertions — all must pass):**
+**Required test cases (56 cases, 228 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -824,7 +830,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 49 | Near me — geolocation permission denied | mocked `getCurrentPosition` error code 1; DOHMH never called; error mentions "permission denied" |
 | 50 | Review links (Google place search + Yelp + Resy) on card meta | Map link href includes `google.com/maps/search/?api=1`, decoded query has name + street; Yelp link href includes `yelp.com/search`, decoded has `find_desc=` name and street in `find_loc`; Resy link href includes `resy.com`, decoded includes the restaurant name |
 | 51 | Address-based chain disambiguation | Resolved short link's address narrows 2 same-name DOHMH matches to 1 card; status notes "matched by address"; placard hero shown; `.addr` matches the address-hint location |
-| 52 | Recently-searched list | empty on first load; successful search adds a `.recent-chip` with the searched name; persists across reload (localStorage); clicking a chip refills `#q` and re-searches; "Clear recent" empties the list |
+| 52 | Recently-searched list | empty on first load; successful search adds a `.recent-chip` with the searched name; chip is a compact pill, not full-width (offsetWidth < half of `#recent`'s); persists across reload (localStorage); clicking a chip refills `#q` and re-searches; "Clear recent" empties the list |
 | 53 | `&` in name extracted from `?q=` URL | `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` resolves directly (no resolver calls); `#q`/`.name` show "MUTEKI UDON & RAMEN" |
 | 54 | Trend indicator — improving | two-inspection history, latest score lower than previous → `.trend.trend-up` present, text includes "Improving" and "(N pts)" |
 | 54b | Trend hidden for single inspection | `history.length < 2` → no `.trend` element |
@@ -867,7 +873,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the near-me tests (48/48b/49, v1.20.0): mock `navigator.geolocation.getCurrentPosition` via `page.addInitScript` (must run before `goto` on `file://` pages) — e.g. `navigator.geolocation.getCurrentPosition = ok => ok({ coords: { latitude: 40.68, longitude: -73.99 } })` for success, or `(ok, err) => err({ code: 1, message: 'denied' })` for test 49. Click `#near` (not `#go`) and `waitForSelector('.card')` or `waitErr`. Test 48: mock `43nn-pn8j` to return two fixtures with `latitude`/`longitude` at different distances from the mocked position; assert the captured `$where` (decoded) includes `within_circle`, the nearer restaurant's card is first, status mentions `within 300`, and `.meta` includes "m away". Test 48b: have the `43nn-pn8j` mock return HTTP 400 when the URL contains `within_circle` and 200 otherwise; assert the bbox fallback fires and its `$where` (after replacing `+` with a space before `decodeURIComponent`, since `+` isn't decoded by `decodeURIComponent`) includes `latitude >`. Test 49: assert DOHMH is never called and the error message mentions "permission denied".
 - For the review-links test (test 50, v1.21.0, updated v1.23.0): plain DOHMH search with `J([MAZZAT])`. All three links are built with `encodeURIComponent` (spaces become `%20`, recovered by `decodeURIComponent` — unlike the `+` from `URLSearchParams` elsewhere). Assert the Map link: `.meta a[href*="google.com/maps/search"]` exists, its href includes `api=1`, and its decoded href includes `MAZZAT` and `MAIN ST` (name + street in the query). Assert the Yelp link: `.meta a[href*="yelp.com/search"]` exists, its decoded href includes `find_desc=MAZZAT` and `MAIN ST` (street in `find_loc`). Assert the Resy link: `.meta a[href*="resy.com"]` exists and its decoded href includes `MAZZAT`. All three render whenever `dba` is present — no coordinates required.
 - For the address-disambiguation test (test 51, v1.22.0): mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat,+247+Smith+St,+Brooklyn,+NY+11231/@40.67,-73.99' })` (microlink/jina as `E`), and `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])` where both fixtures share `dba: 'MAZZAT'` but differ in `camis`/`building`/`street`/`boro`/`zipcode` — `MAZZAT_A` (`building:'247', street:'SMITH ST', boro:'Brooklyn', zipcode:'11231'`) matches the resolved address; `MAZZAT_B` (`building:'500', street:'ATLANTIC AVE', boro:'Brooklyn', zipcode:'11217'`) does not. Trigger the short link via `triggerMaps`, wait for `.card`, then assert exactly 1 `.card`, `#status` includes "matched by address", `.placard-wrap` is present (hero shown for the narrowed single result), and `.addr` includes "SMITH ST".
-- For the recently-searched test (test 52, v1.23.0): plain DOHMH search with `J([MAZZAT])`. Assert `#recent` is empty (`innerHTML.trim() === ''`) before any search. Search for `MAZZAT`, wait for `.recent-chip`, assert its `textContent === 'MAZZAT'`. Reload the page and assert the chip still shows `MAZZAT` (proves `localStorage` persistence). Clear `#q`, click `.recent-chip`, wait for `.card`, and assert `#q` is refilled with `MAZZAT`. Click `.recent-clear` and assert `#recent` is empty again.
+- For the recently-searched test (test 52, v1.23.0, updated v1.25.1): plain DOHMH search with `J([MAZZAT])`. Assert `#recent` is empty (`innerHTML.trim() === ''`) before any search. Search for `MAZZAT`, wait for `.recent-chip`, assert its `textContent === 'MAZZAT'`. Assert the chip renders as a compact pill, not a full-width bar: `chip.offsetWidth < recentEl.offsetWidth / 2` (guards the v1.25.1 `width: auto; margin-top: 0` override of the global `button { width: 100% }` rule). Reload the page and assert the chip still shows `MAZZAT` (proves `localStorage` persistence). Clear `#q`, click `.recent-chip`, wait for `.card`, and assert `#q` is refilled with `MAZZAT`. Click `.recent-clear` and assert `#recent` is empty again.
 - For the `&`-in-name test (test 53, v1.23.1): trigger `https://www.google.com/maps?q=Muteki+Udon+%26+Ramen` via `triggerMaps`. Mock `mapu.retiolus.net`/`microlink.io`/`jina.ai` as always-fail (`E`) — `nameFromUrl` should resolve `?q=` directly without any resolver call. Mock `43nn-pn8j` to `J([mkRow({ dba: 'MUTEKI UDON & RAMEN' })])`. Wait for `.card`, then assert `#q` (uppercased) `=== 'MUTEKI UDON & RAMEN'` and `.name === 'MUTEKI UDON & RAMEN'` — proves `isName`'s reject-regex no longer rejects names containing `&`.
 - For the trend tests (tests 54/54b, v1.24.0): plain DOHMH search. Test 54 mocks two rows sharing `camis`/`dba`, distinct `inspection_date`s — newest with `score:'5'`, older with `score:'20'`. `groupByRestaurant` sorts `history` newest-first, so `history[0].score (5) < history[1].score (20)` → improving. Assert `.trend.trend-up` present and its text includes `Improving` and `(15 pts)`. Test 54b mocks a single row (`J([MAZZAT])`) — `history.length < 2` → assert `.trend` is absent.
 - For the freshness tests (tests 55/55b, v1.24.0): plain DOHMH search. Test 55 mocks a row with `inspection_date: new Date().toISOString()` (today, computed at test-run time so it's always "now") — assert `.meta .freshness` present and `textContent === 'Inspected today'`. Test 55b mocks a row with `inspection_date: '2018-01-01T00:00:00.000'` (always > `FRESHNESS_OVERDUE_DAYS` old) — assert `.meta .freshness.freshness-overdue` present and `textContent === 'Inspection overdue'`.
@@ -963,7 +969,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.25.0**
+Current: **v1.25.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1008,6 +1014,7 @@ Notable versions:
 - v1.23.1 — fixed `isName`'s reject-regex (`nameFromUrl`, `cleanTitle`, `parseShare`) rejecting any name containing `&` — restaurants like "Muteki Udon & Ramen" failed with "Couldn't find a restaurant name in this link" even though `?q=Muteki+Udon+%26+Ramen` resolves the name with zero network calls. The `&` check was redundant: it was meant to reject tracking-param garbage (`?g_st=ic`), which the existing `?`/`=` checks already catch. Regex narrowed from `/[?=&]/` to `/[?=]/` in all three call sites. Test 53 added (53 cases, 202 assertions)
 - v1.24.0 — two new card features from a June 2026 research run: a `.trend` indicator (`trendHtml`) comparing the two most recent inspection scores (lower = better) — ▲ "Improving (N pts)" in green, ▼ "Declining (N pts)" in orange, or ▬ "No change", shown after the score bar whenever ≥2 inspections exist; and an "inspection freshness" chip (`fmtFreshness`) as the first item in `.meta` — "Inspected today/N days/N month(s) ago", or "Inspection overdue" past `FRESHNESS_OVERDUE_DAYS` (545 days, ~18 months) without a new inspection. Both are pure client-side derivations from data the app already fetches. Tests 54–55b added (55 cases, 222 assertions)
 - v1.25.0 — design system v2 applied: the `nyc-restaurant-grade-design` skill replaced with the user-supplied v2 bundle (new components for the v1.15–1.24 features, fonts + interaction tokens, templates), and its four production deltas implemented in the app — brand logomark header (34px NYC-blue "A" chip + "NYC Restaurant Grade" wordmark replacing the plain `<h1>`), Liberation Sans Narrow placard webfont (`assets/fonts/`, `@font-face`, ahead of the "Arial Narrow" fallback), NYC-blue focus ring (3px `rgba(31,87,166,.45)` halo — inputs on any focus, buttons on `:focus-visible`; replaces the bare `outline: none`), and a 220ms rise-in entrance for `.card`/`.placard-wrap` gated on `prefers-reduced-motion`. Markup/CSS only, no JS changes. Test 56 added (56 cases, 227 assertions)
+- v1.25.1 — fixed recent-search chips rendering as full-width stacked bars: the global `button { width: 100%; margin-top: 10px }` rule was leaking into `.recent-chip` (the chip rule never declared `width`/`margin-top`), so each entry spanned the whole row and the history filled the top of the page. `.recent-chip`/`.recent-clear` now declare `width: auto; margin-top: 0`, and chips get `max-width: 180px` + ellipsis so a long name can't monopolise a row — the list renders as 1–2 rows of compact wrapping pills, the original intent. CSS only. Test 52 gains a not-full-width assertion (56 cases, 228 assertions)
 
 ## Known-good Maps parsing baseline
 

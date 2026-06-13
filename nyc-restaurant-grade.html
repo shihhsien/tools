@@ -59,8 +59,9 @@
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
   /* === Recently searched === */
   .recent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 0; }
-  .recent-chip { font-size: 12px; padding: 5px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
-  .recent-clear { font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; width: auto; }
+  /* width/margin-top override the global `button` rule below — without it each chip spans the full row */
+  .recent-chip { width: auto; margin-top: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding: 5px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
+  .recent-clear { width: auto; margin-top: 0; font-size: 12px; padding: 5px 10px; background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
@@ -224,7 +225,7 @@
 </details>
 
 <div id="debug-log"></div>
-<div class="ver">v1.25.0</div>
+<div class="ver">v1.25.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
