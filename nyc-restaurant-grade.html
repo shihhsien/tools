@@ -48,6 +48,7 @@
   .sub { font-size: 12px; color: var(--muted); margin: 10px 0 16px; line-height: 1.5; }
   .row { display: flex; gap: 8px; }
   .row + .row { margin-top: 8px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   input { flex: 1; width: 100%; padding: 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); outline: none; transition: border-color .12s ease, box-shadow .12s ease; }
   input::placeholder { color: var(--muted); }
   /* NYC-blue focus ring (design system v2): inputs on any focus, buttons on keyboard focus only */
@@ -201,9 +202,12 @@
 <header class="brand"><div class="brand-chip">A</div><h1>NYC Restaurant <span>Grade</span></h1></header>
 <div class="sub">Official NYC Health Dept data (DOHMH). Name + optional location (street, borough, or ZIP — not neighborhood).</div>
 
+<label class="sr-only" for="q">Restaurant name</label>
 <div class="row"><input id="q" placeholder="Restaurant name" autocapitalize="characters" autocomplete="off"></div>
+<label class="sr-only" for="loc">Street, borough, or ZIP (optional)</label>
 <div class="row"><input id="loc" placeholder="Street, borough, or ZIP (optional)" autocapitalize="words" autocomplete="off"></div>
 <div class="divider"><span>or paste a link</span></div>
+<label class="sr-only" for="maps-input">Paste a Google Maps link</label>
 <div class="row">
   <input id="maps-input" placeholder="Paste a Google Maps link…" autocomplete="off" autocorrect="off" autocapitalize="none">
 </div>
@@ -240,7 +244,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.31.0</div>
+<div class="ver">v1.32.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------

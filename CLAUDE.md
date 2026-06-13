@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (65 cases, 284 assertions)
+- `.claude/skills/test/` — Playwright test skill (66 cases, 282 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -476,6 +476,11 @@ Verified facts from a 5-agent fan-out research run (sources in session transcrip
   `role="button"`/
   `aria-expanded` to `<summary>` — native semantics already map them; extra ARIA
   causes double announcements. Keep a visible disclosure marker.
+- `#q`/`#loc`/`#maps-input` relied on `placeholder` alone, with no programmatic
+  label — screen readers announce placeholder text inconsistently and it
+  disappears once the field has a value. **Implemented in v1.32.0**: a
+  visually-hidden `<label for="...">` (`.sr-only`, clip-rect technique) per
+  input, mirroring the placeholder text.
 - iOS: home-screen web apps get **isolated localStorage** — `tip-v2` dismissed in
   Safari won't carry into a standalone instance. iOS 26 opens every
   added-to-home-screen site as a web app by default. Shortcuts "Open URLs"
@@ -893,7 +898,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (65 cases, 284 assertions — all must pass):**
+**Required test cases (66 cases, 282 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -979,6 +984,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 64b | Consistency hidden for a single inspection | one inspection → no `.grade-consistency` |
 | 65 | Borough comparison panel (opt-in, fetched on open) | card has a collapsed `.boro-compare`; a plain search fires no boro query (1 search call); opening it runs the `$group=grade` query scoped to `upper(boro)='BROOKLYN'` and shows "About 88 in 100 graded Brooklyn restaurants are A. This one is graded A — in the majority." |
 | 65b | Borough comparison degrades gracefully | boro query (and mirror/proxy) all 500 → panel body reads "Couldn't load borough comparison." |
+| 66 | Accessible labels for `#q`/`#loc`/`#maps-input` (v1.32.0) | `label[for="q"]`, `label[for="loc"]`, `label[for="maps-input"]` all present with non-empty text, each `for` resolves to a real input id, and each label is visually hidden via `.sr-only` |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1118,7 +1124,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.31.0**
+Current: **v1.32.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1171,6 +1177,7 @@ Notable versions:
 - v1.29.0 — live citywide grade distribution: the "What do these grades mean?" panel's "About **9 in 10** NYC restaurants score an A" now shows the real figure ("91 in 100"). `loadGradeDist()` runs one cached `$group=grade` aggregate query against the same `43nn-pn8j` dataset (no new dependency, via `getJSON` so it inherits the mirror/proxy failover), fired **lazily on first open of the `#about` panel** so it never runs during a plain search and can't perturb any test's DOHMH call counting; degrades silently to the static copy on any failure. Tests 61–61b added (61 cases, 260 assertions)
 - v1.30.0 — three history-derived insights (pure client-side, zero new network calls): a `↻ repeat` badge (`.viol-repeat`) on a violation whose `violation_code` recurred at an earlier inspection (`groupByRestaurant` precomputes `priorDates`); a `Last critical violation: DATE · none at the latest inspection` line (`lastCriticalHtml`, fed by `g.lastCritical`) shown only when the most recent critical predates the latest (clean-latest) inspection; and a `Grade A at N of M recent inspections` consistency line (`gradeConsistencyHtml`) over the ≤6 history window. All derived from rows already fetched. Tests 62–64b added (64 cases, 275 assertions)
 - v1.31.0 — borough comparison: each card with a borough gains an opt-in "How does {Boro} compare?" panel (`boroCompareHtml`) that, on first open, runs the citywide `$group=grade` aggregate scoped to that borough (`loadBoroGradeDist`, cached per boro via `boroDistCache`) and shows "About N in 100 graded {Boro} restaurants are A. This one is graded X — in the majority/minority." The fetch is deferred to a user toggle via a single capturing `toggle` listener on `#results` (the event doesn't bubble), so a plain search makes no extra request and no existing card test is perturbed; degrades to "Couldn't load borough comparison." on failure. Completes the Tier-1/Tier-2 no-infra research backlog. Tests 65–65b added (65 cases, 284 assertions)
+- v1.32.0 — accessibility: `#q`, `#loc`, and `#maps-input` gain visually-hidden `<label for="...">` elements (`.sr-only`, clip-rect technique) mirroring their placeholder text, so screen readers announce a stable field name instead of relying on `placeholder` (which some AT skips, and which disappears once the field has a value). Markup/CSS only, no JS changes. Closes the documented Tier-4 a11y gap. Test 66 added (66 cases, 282 assertions)
 
 ## Known-good Maps parsing baseline
 
