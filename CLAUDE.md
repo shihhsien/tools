@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (64 cases, 275 assertions)
+- `.claude/skills/test/` — Playwright test skill (65 cases, 284 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -494,9 +494,9 @@ The `<script>` is organised into labelled sections:
 |---|---|
 | Config & DOM | constants, cached element refs |
 | Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone`, `fmtDist`, `fmtFreshness`, `distM` |
-| NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (tiered: primary → data.ny.gov mirror → corsproxy.io) |
+| NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (tiered: primary → data.ny.gov mirror → corsproxy.io), `loadGradeDist`, `loadBoroGradeDist` |
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
-| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `trendHtml`, `violationsHtml`, `historyHtml`, `lastCriticalHtml`, `gradeConsistencyHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
+| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `trendHtml`, `violationsHtml`, `historyHtml`, `lastCriticalHtml`, `gradeConsistencyHtml`, `boroCompareHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render` |
 | Search | `search`, `searchNearby` |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `coordsFromUrl`, `buildGeoAddr`, `viaNominatim`, `viaPhoton`, `reverseGeocode`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
 | Recently searched | `loadRecent`, `saveRecent`, `renderRecent` (localStorage-backed search history) |
@@ -654,6 +654,21 @@ request and **can't perturb any test's `43nn-pn8j` call counting**. Best-effort 
 the static "9 in 10" copy untouched. Only the about-panel figure is made live — the per-card
 `GRADE_CONTEXT.A` line keeps its static "9 in 10" wording (a card render must stay
 network-free beyond its own search).
+
+### Borough comparison (v1.31.0)
+
+Each card with a borough carries a collapsed `<details class="boro-compare" data-boro=…
+data-grade=…>` ("How does {Boro} compare?"). `loadBoroGradeDist(boro)` runs the same
+`$group=grade` aggregate scoped to one borough (`upper(boro)='BROOKLYN' and grade in
+('A','B','C')`, via `getJSON`), cached per borough in `boroDistCache`. The fetch is
+**deferred to first open**: a single **capturing** `toggle` listener on `#results` (capturing
+because the `toggle` event doesn't bubble) catches the panel's expansion, guards on
+`.boro-compare` + `.open` + a `data-loaded` once-flag, fetches, and writes
+`About N in 100 graded {Boro} restaurants are A. This one is graded X — in the
+majority/minority.` On failure the body reads "Couldn't load borough comparison." Because the
+fetch only fires on a user toggle, **a plain search makes no extra `43nn-pn8j` request** and no
+existing card test (which never opens the panel) is perturbed — same lazy strategy as the
+about-panel citywide figure (v1.29.0).
 
 ## Violation-code categories (v1.18.0)
 
@@ -878,7 +893,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (64 cases, 275 assertions — all must pass):**
+**Required test cases (65 cases, 284 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -962,6 +977,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 63b | Last-critical hidden when latest has a critical | latest inspection itself has a `Critical` flag → no `.last-critical` |
 | 64 | Grade-A consistency count | 3 graded inspections, 2 grade A → `.grade-consistency` text "Grade A at 2 of 3 recent inspections" |
 | 64b | Consistency hidden for a single inspection | one inspection → no `.grade-consistency` |
+| 65 | Borough comparison panel (opt-in, fetched on open) | card has a collapsed `.boro-compare`; a plain search fires no boro query (1 search call); opening it runs the `$group=grade` query scoped to `upper(boro)='BROOKLYN'` and shows "About 88 in 100 graded Brooklyn restaurants are A. This one is graded A — in the majority." |
+| 65b | Borough comparison degrades gracefully | boro query (and mirror/proxy) all 500 → panel body reads "Couldn't load borough comparison." |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1007,6 +1024,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the Nominatim reverse-geocode test (test 57, v1.26.0): two same-name DOHMH fixtures (reuse test 51's `MAZZAT_A` = `building:'247', street:'SMITH ST'` and `MAZZAT_B` = `building:'500', street:'ATLANTIC AVE'`). Mock `mapu.retiolus.net` → `J({ full_link: 'https://www.google.com/maps/place/Mazzat/@40.6782,-73.9929,17z' })` — a **name-only place path with `@lat,lng` but no comma-address**, so `splitPlace`'s `addr` is empty and the coordinate path fires. Mock `microlink.io`/`jina.ai` → `E`. Mock `nominatim.openstreetmap.org` with a flag handler (`nominatimHit = true`) returning `J({ address: { house_number:'247', road:'Smith Street', borough:'Brooklyn', county:'Kings County', state:'New York', postcode:'11231' } })`. Mock `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`. Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })` (resolver + Nominatim round-trips). Assert: `nominatimHit === true` (coords extracted and reverse-geocode called), exactly 1 `.card` (disambiguation narrowed), `#status` includes `matched by address`, `.addr` includes `SMITH ST` (the 247 location won), and `#osm-attr` is visible (`getComputedStyle(el).display !== 'none'` — attribution revealed on use). Declare `nominatimHit` outside `setup`/`fn`. **Note:** the existing resolver tests whose mapu mock returns a name-only `@coords` URL (e.g. tests 12/15/41) now also reach `reverseGeocode`, but `nominatim.openstreetmap.org` **and** `photon.komoot.io` are both unmocked there → `setupRoute` aborts them → each tier's fetch rejects → `reverseGeocode` returns `null` → card still renders name-only, no `pageerror`. Do not add geocoder mocks to those tests.
 - For the Photon reverse-geocode fallback test (test 58, v1.27.0): identical setup to test 57 (reuse `MAZZAT_A`/`MAZZAT_B`, name-only `@lat,lng` mapu mock, microlink/jina → `E`), but mock `nominatim.openstreetmap.org` → **HTTP 429** (`{ status: 429, ct: 'text/plain', body: 'rate limited' }`) so tier 1 fails, and mock `photon.komoot.io` with a flag handler (`photonHit = true`) returning the GeoJSON shape `J({ features: [{ properties: { housenumber:'247', street:'Smith Street', district:'Brooklyn', county:'Kings County', postcode:'11231' } }] })`. Mock `43nn-pn8j` → `J([MAZZAT_A, MAZZAT_B])`. Trigger the short link via `triggerMaps`, `waitForSelector('.card', { timeout: 20000 })`. Assert: `photonHit === true` (Nominatim 429 → Photon fallback fired), exactly 1 `.card`, `#status` includes `matched by address`, `.addr` includes `SMITH ST`, and `#osm-attr` is visible. Declare `photonHit` outside `setup`/`fn`.
 - For the history-insight tests (tests 62–64b, v1.30.0): plain DOHMH searches (`#q`+`#go`), single `43nn-pn8j` mock returning multi-row fixtures that share one `camis` so `groupByRestaurant` folds them. Test 62: two rows, same `violation_code:'04L'`, distinct `inspection_date`s (latest + an earlier one) → assert `.viol-repeat` present (`state:'attached'`, the `<details>` is collapsed) and its text includes `repeat`. Test 62b: a code only at the latest date → no `.viol-repeat`. Test 63: a `critical_flag:'Critical'` row at an *earlier* date plus a critical-free latest row → assert `.last-critical` present, text includes `Last critical`. Test 63b: the latest inspection itself carries the `Critical` flag → no `.last-critical`. Test 64: three rows, distinct dates, grades A/B/A → assert `.grade-consistency` text === `Grade A at 2 of 3 recent inspections`. Test 64b: a single inspection → no `.grade-consistency`. None of these add network calls.
+- For the borough-comparison tests (tests 65/65b, v1.31.0): the boro query also carries `$group=grade` (so split the `43nn-pn8j` mock the same way as test 61). Test 65: function handler — `u.includes('group=grade')` sets `boroHit=true`, captures `boroUrl`, returns `J([{grade:'A',n:'880'},{grade:'B',n:'90'},{grade:'C',n:'30'}])`; otherwise count `searchCalls` and return `J([MAZZAT])` (MAZZAT's boro is Brooklyn). After a plain search assert `.boro-compare` present, `!boroHit && searchCalls===1` (deferred), and the summary names the borough. Click `.boro-compare summary`, `waitForFunction` until `.boro-compare-body` no longer contains "Loading", then assert `boroHit`, `decodeURIComponent(boroUrl)` includes `upper(boro)='BROOKLYN'`, and the body includes `88 in 100` + `majority` (880/1000 → 88%). Test 65b: make the boro query and the `data.ny.gov`/`corsproxy.io` failover all return 500 → assert the body includes `Couldn't load`. **Note:** like the v1.29.0 dist query, this only fires on a user toggle, so no other test is affected.
 - For the live grade-distribution tests (tests 61/61b, v1.29.0): the dist query hits the same `43nn-pn8j` host but is uniquely identifiable by `$group=grade` (which survives as the literal substring `group=grade` because only the `$select`/`$where` are `encodeURIComponent`-wrapped). Test 61: mock `43nn-pn8j` with a function handler that, when `u.includes('group=grade')`, sets `distHit=true` and returns `J([{grade:'A',n:'910'},{grade:'B',n:'70'},{grade:'C',n:'20'}])`, else returns `J([MAZZAT])`. After load assert `#a-rate` text === `9 in 10` and `!distHit` (lazy — not fired on load). Click `#about > summary`, `waitForFunction` until `#a-rate` text !== `9 in 10`, then assert `distHit` and `#a-rate` === `91 in 100` (910/1000 → 91%). Test 61b: same split handler but count non-dist `43nn-pn8j` calls in `searchCalls`; do a plain `#q`+`#go` search and assert `!distHit` (never fires for a search) and `searchCalls === 1` (the dist query adds no search-path request). **Note:** because the dist query only fires on `#about` open, no other test that counts `43nn-pn8j` calls is affected — they never open the panel.
 - For the getJSON failover tests (tests 60/60b/60c, v1.28.0): plain DOHMH search (`#q` fill + `#go`), but route the three hosts separately with hit-flags declared outside `setup`/`fn`. Test 60: `data.cityofnewyork.us` → HTTP 500, `data.ny.gov` (flag `mirrorHit`) → `J([MAZZAT])`, `corsproxy.io` (flag `proxyHit`) → also serves it; assert `mirrorHit && !proxyHit` (the official mirror is preferred over the proxy) and the card renders. Test 60b: `data.cityofnewyork.us` → 500, `data.ny.gov` → 404, `corsproxy.io` (flag) → `J([MAZZAT])`; assert `proxyHit` and the card renders (proxy is the last resort). Test 60c: `data.cityofnewyork.us` → `J([MAZZAT])`, mirror/proxy handlers set flags then `r.abort()`; assert neither was hit (primary success short-circuits — no regression). Note the mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver fetches are unaffected.
 - For the status re-announce test (test 59, v1.27.1): no mocks needed for the search path — exercise the empty-input guard, which calls `setStatus` directly with no intervening status change (a successful search interleaves a "Looking up…" status, so its result already differs from the prior text and re-announces naturally — the guard double-press is the genuine back-to-back-identical case). Build `ZWSP = String.fromCharCode(0x200B)` (don't type the literal char — Write/Edit can mangle invisible codepoints). Click `#go` with `#q` empty, assert `#status` text includes `Enter a restaurant name` and does NOT include `ZWSP`. Click `#go` again (still empty), assert the status now includes both `Enter a restaurant name` **and** `ZWSP` (the toggle appended it so the aria-live region re-announces). The substring checks elsewhere are unaffected because U+200B is invisible and `.includes()` on the visible text still matches.
@@ -1100,7 +1118,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.30.0**
+Current: **v1.31.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1152,6 +1170,7 @@ Notable versions:
 - v1.28.0 — `getJSON` resilience: a three-tier failover (primary `data.cityofnewyork.us` → official `data.ny.gov` Socrata mirror → `corsproxy.io`) replaces the old two-tier primary→proxy path. The first-party NY State mirror (CORS-open, same dataset id/SoQL) is preferred over the third-party proxy, which itself blocklists some hosts. Only DOHMH calls (the `API` prefix) are host-swapped; resolver/CSV fetches are untouched. The mirror id is deploy-verify — if data.ny.gov doesn't host `43nn-pn8j`, `getJSON` falls through to the proxy, so no regression. Tests 60–60c added (60 cases, 251 assertions)
 - v1.29.0 — live citywide grade distribution: the "What do these grades mean?" panel's "About **9 in 10** NYC restaurants score an A" now shows the real figure ("91 in 100"). `loadGradeDist()` runs one cached `$group=grade` aggregate query against the same `43nn-pn8j` dataset (no new dependency, via `getJSON` so it inherits the mirror/proxy failover), fired **lazily on first open of the `#about` panel** so it never runs during a plain search and can't perturb any test's DOHMH call counting; degrades silently to the static copy on any failure. Tests 61–61b added (61 cases, 260 assertions)
 - v1.30.0 — three history-derived insights (pure client-side, zero new network calls): a `↻ repeat` badge (`.viol-repeat`) on a violation whose `violation_code` recurred at an earlier inspection (`groupByRestaurant` precomputes `priorDates`); a `Last critical violation: DATE · none at the latest inspection` line (`lastCriticalHtml`, fed by `g.lastCritical`) shown only when the most recent critical predates the latest (clean-latest) inspection; and a `Grade A at N of M recent inspections` consistency line (`gradeConsistencyHtml`) over the ≤6 history window. All derived from rows already fetched. Tests 62–64b added (64 cases, 275 assertions)
+- v1.31.0 — borough comparison: each card with a borough gains an opt-in "How does {Boro} compare?" panel (`boroCompareHtml`) that, on first open, runs the citywide `$group=grade` aggregate scoped to that borough (`loadBoroGradeDist`, cached per boro via `boroDistCache`) and shows "About N in 100 graded {Boro} restaurants are A. This one is graded X — in the majority/minority." The fetch is deferred to a user toggle via a single capturing `toggle` listener on `#results` (the event doesn't bubble), so a plain search makes no extra request and no existing card test is perturbed; degrades to "Couldn't load borough comparison." on failure. Completes the Tier-1/Tier-2 no-infra research backlog. Tests 65–65b added (65 cases, 284 assertions)
 
 ## Known-good Maps parsing baseline
 

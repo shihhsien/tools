@@ -160,6 +160,13 @@
   /* === History-derived insights (client-side, no extra network) === */
   .grade-consistency { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .last-critical { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  /* === Borough comparison (opt-in, fetched on open) === */
+  .boro-compare { margin-top: 8px; }
+  .boro-compare summary { font-size: 12px; color: var(--muted); cursor: pointer; list-style: none; padding: 2px 0; user-select: none; }
+  .boro-compare summary::-webkit-details-marker { display: none; }
+  .boro-compare summary::before { content: '\25B8  '; }
+  .boro-compare[open] summary::before { content: '\25BE  '; }
+  .boro-compare-body { font-size: 12px; color: var(--text); line-height: 1.45; margin-top: 6px; }
   /* === Grade context (plain-English meaning under the grade line) === */
   .grade-ctx { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
   /* === History === */
@@ -233,7 +240,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.30.0</div>
+<div class="ver">v1.31.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -464,6 +471,28 @@ function loadGradeDist() {
   return gradeDistPromise;
 }
 
+// Per-borough grade distribution — same aggregate query scoped to one borough, fetched
+// lazily the first time a card's "How does {Boro} compare?" panel is opened (so it adds
+// no request to a plain search). Cached per borough; best-effort (null on failure).
+const boroDistCache = {};
+function loadBoroGradeDist(boro) {
+  const key = String(boro || '').toUpperCase().trim();
+  if (!key) return Promise.resolve(null);
+  if (!boroDistCache[key]) boroDistCache[key] = (async () => {
+    try {
+      const where = `upper(boro)='${key.replace(/'/g, "''")}' and grade in ('A','B','C')`;
+      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n')
+        + '&$where=' + encodeURIComponent(where) + '&$group=grade';
+      const rows = await getJSON(url);
+      const counts = { A: 0, B: 0, C: 0 };
+      for (const r of rows) { const g = String(r.grade || '').toUpperCase(); if (g in counts) counts[g] = Number(r.n) || 0; }
+      const total = counts.A + counts.B + counts.C;
+      return total ? { ...counts, total } : null;
+    } catch { return null; }
+  })();
+  return boroDistCache[key];
+}
+
 // ---- Rendering --------------------------------------------------------
 // One restaurant has many inspection rows. Collapse them by camis, keeping
 // the latest inspection and the most recent letter grade separately.
@@ -654,7 +683,19 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + violationsHtml(violations)
     + lastCriticalHtml(lastCritical, latest.inspection_date)
     + historyHtml(history)
+    + boroCompareHtml(info.boro, grade)
     + '</div>';
+}
+
+// Opt-in borough comparison: a collapsed panel that, on first open, fetches the
+// borough's grade distribution (loadBoroGradeDist) and shows how this restaurant's
+// grade stacks up. The fetch is deferred to a user toggle (handled by a delegated
+// capturing listener on #results), so a plain search makes no extra request.
+function boroCompareHtml(boro, grade) {
+  if (!boro) return '';
+  return '<details class="boro-compare" data-boro="' + htmlEsc(boro) + '" data-grade="' + htmlEsc(grade || '') + '">'
+    + '<summary>How does ' + htmlEsc(boro) + ' compare?</summary>'
+    + '<div class="boro-compare-body">Loading…</div></details>';
 }
 
 // Grade placard — the iconic NYC DOHMH window card, shown as hero for a single result.
@@ -1154,6 +1195,20 @@ btn.addEventListener('click', () => search());
 nearBtn.addEventListener('click', searchNearby);
 // First time the grades explainer is opened, fetch the real citywide A-rate.
 if (aboutEl) aboutEl.addEventListener('toggle', () => { if (aboutEl.open) loadGradeDist(); });
+// Delegated (capturing — `toggle` doesn't bubble) handler for each card's borough-
+// comparison panel: fetch the borough distribution the first time it's expanded.
+resultsEl.addEventListener('toggle', async e => {
+  const d = e.target;
+  if (!(d instanceof HTMLElement) || !d.classList.contains('boro-compare') || !d.open || d.dataset.loaded) return;
+  d.dataset.loaded = '1';
+  const body = d.querySelector('.boro-compare-body');
+  const dist = await loadBoroGradeDist(d.dataset.boro);
+  if (!dist) { body.textContent = "Couldn't load borough comparison."; return; }
+  const pct = Math.round(dist.A / dist.total * 100);
+  const g = d.dataset.grade;
+  const thisIs = g === 'A' ? 'graded A — in the majority' : g ? 'graded ' + g + ' — in the minority' : 'not currently graded';
+  body.textContent = `About ${pct} in 100 graded ${d.dataset.boro} restaurants are A. This one is ${thisIs}.`;
+}, true);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
 mapsInput.addEventListener('keydown', e => { if (e.key === 'Enter') onMapsLink(); });

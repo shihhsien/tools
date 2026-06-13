@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 64 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 65 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 64-case Playwright test suite, fix any failures, and confirm 275/275 assertions pass.
+Run the full 65-case Playwright test suite, fix any failures, and confirm 284/284 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 64 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 65 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `275 tests: 275 passed, 0 failed`
+Expected output ends with: `284 tests: 284 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -502,6 +502,22 @@ All three derivations are pure client-side (no extra network).
 - **Test 64 (A-consistency):** three rows, distinct dates, grades A/B/A. Assert
   `.grade-consistency` text === `Grade A at 2 of 3 recent inspections`. **Test 64b:** single
   inspection → no `.grade-consistency`.
+
+### Borough comparison (tests 65/65b, v1.31.0)
+Each card with a boro has an opt-in `.boro-compare` panel; `loadBoroGradeDist(boro)` (cached in
+`boroDistCache`) fires only on first open. The query carries `$group=grade`, so split the
+`43nn-pn8j` mock like test 61.
+- **Test 65:** function handler — `u.includes('group=grade')` sets `boroHit=true`, captures
+  `boroUrl`, returns `J([{grade:'A',n:'880'},{grade:'B',n:'90'},{grade:'C',n:'30'}])`; else count
+  `searchCalls`, return `J([MAZZAT])` (Brooklyn). After a plain search: `.boro-compare` present,
+  `!boroHit && searchCalls===1`, summary names the boro. Click `.boro-compare summary`,
+  `waitForFunction` until `.boro-compare-body` lacks "Loading", then assert `boroHit`,
+  `decodeURIComponent(boroUrl)` includes `upper(boro)='BROOKLYN'`, body includes `88 in 100`
+  and `majority`.
+- **Test 65b:** boro query + `data.ny.gov` + `corsproxy.io` all 500 → body includes
+  `Couldn't load`.
+
+Only fires on a user toggle, so no other test is affected.
 
 ## Step 4 — Iterate
 
