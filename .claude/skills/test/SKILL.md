@@ -5,7 +5,7 @@ description: Run the full Playwright test suite for nyc-restaurant-grade.html. W
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 79-case Playwright test suite, fix any failures, and confirm 363/363 assertions pass.
+Run the full 79-case Playwright test suite, fix any failures, and confirm 352/352 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 77 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 79 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `363 tests: 363 passed, 0 failed`
+Expected output ends with: `352 tests: 352 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
