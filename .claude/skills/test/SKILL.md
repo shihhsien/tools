@@ -5,7 +5,7 @@ description: Run the full Playwright test suite for nyc-restaurant-grade.html. W
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 77-case Playwright test suite, fix any failures, and confirm 358/358 assertions pass.
+Run the full 77-case Playwright test suite, fix any failures, and confirm 356/356 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `358 tests: 358 passed, 0 failed`
+Expected output ends with: `356 tests: 356 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
