@@ -275,7 +275,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.41.1</div>
+<div class="ver">v1.42.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -524,13 +524,19 @@ function loadBoroGradeDist(boro) {
   if (!boroDistCache[key]) boroDistCache[key] = (async () => {
     try {
       const where = `upper(boro)='${key.replace(/'/g, "''")}' and grade in ('A','B','C')`;
-      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n')
+      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n,avg(score) as avg_score')
         + '&$where=' + encodeURIComponent(where) + '&$group=grade';
       const rows = await getJSON(url);
       const counts = { A: 0, B: 0, C: 0 };
-      for (const r of rows) { const g = String(r.grade || '').toUpperCase(); if (g in counts) counts[g] = Number(r.n) || 0; }
+      const avgScore = { A: null, B: null, C: null };
+      for (const r of rows) {
+        const g = String(r.grade || '').toUpperCase();
+        if (!(g in counts)) continue;
+        counts[g] = Number(r.n) || 0;
+        if (r.avg_score != null) avgScore[g] = Number(r.avg_score);
+      }
       const total = counts.A + counts.B + counts.C;
-      return total ? { ...counts, total } : null;
+      return total ? { ...counts, total, avgScore } : null;
     } catch { return null; }
   })();
   return boroDistCache[key];
@@ -547,13 +553,19 @@ function loadCuisineGradeDist(cuisine) {
   if (!cuisineDistCache[key]) cuisineDistCache[key] = (async () => {
     try {
       const where = `upper(cuisine_description)='${key.replace(/'/g, "''")}' and grade in ('A','B','C')`;
-      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n')
+      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n,avg(score) as avg_score')
         + '&$where=' + encodeURIComponent(where) + '&$group=grade';
       const rows = await getJSON(url);
       const counts = { A: 0, B: 0, C: 0 };
-      for (const r of rows) { const g = String(r.grade || '').toUpperCase(); if (g in counts) counts[g] = Number(r.n) || 0; }
+      const avgScore = { A: null, B: null, C: null };
+      for (const r of rows) {
+        const g = String(r.grade || '').toUpperCase();
+        if (!(g in counts)) continue;
+        counts[g] = Number(r.n) || 0;
+        if (r.avg_score != null) avgScore[g] = Number(r.avg_score);
+      }
       const total = counts.A + counts.B + counts.C;
-      return total ? { ...counts, total } : null;
+      return total ? { ...counts, total, avgScore } : null;
     } catch { return null; }
   })();
   return cuisineDistCache[key];
@@ -757,7 +769,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     const locStr = ((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' NY ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim();
     metaParts.push('<a href="' + htmlEsc('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(info.dba + ' ' + locStr)) + '" target="_blank" rel="noopener">Map ↗</a>');
     metaParts.push('<a href="' + htmlEsc('https://www.yelp.com/search?find_desc=' + encodeURIComponent(info.dba) + '&find_loc=' + encodeURIComponent(locStr)) + '" target="_blank" rel="noopener">Yelp ↗</a>');
-    metaParts.push('<a href="' + htmlEsc('https://resy.com/cities/ny/venues?query=' + encodeURIComponent(info.dba)) + '" target="_blank" rel="noopener">Resy ↗</a>');
+    metaParts.push('<a href="' + htmlEsc('https://resy.com/cities/new-york-ny/search?query=' + encodeURIComponent(info.dba)) + '" target="_blank" rel="noopener">Resy ↗</a>');
     const favName = info.dba, favLoc = info.boro || '';
     const fav = isFavorite(favName, favLoc);
     metaParts.push('<button class="fav-toggle" data-name="' + htmlEsc(favName) + '" data-loc="' + htmlEsc(favLoc) + '" aria-pressed="' + fav + '">' + (fav ? '★ Saved' : '☆ Save') + '</button>');
@@ -777,8 +789,8 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + violationsHtml(violations)
     + lastCriticalHtml(lastCritical, latest.inspection_date)
     + historyHtml(history)
-    + boroCompareHtml(info.boro, grade)
-    + cuisineCompareHtml(info.cuisine_description, grade)
+    + boroCompareHtml(info.boro, grade, graded ? graded.score : null)
+    + cuisineCompareHtml(info.cuisine_description, grade, graded ? graded.score : null)
     + '</div>';
 }
 
@@ -786,9 +798,9 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
 // borough's grade distribution (loadBoroGradeDist) and shows how this restaurant's
 // grade stacks up. The fetch is deferred to a user toggle (handled by a delegated
 // capturing listener on #results), so a plain search makes no extra request.
-function boroCompareHtml(boro, grade) {
+function boroCompareHtml(boro, grade, score) {
   if (!boro) return '';
-  return '<details class="boro-compare" data-boro="' + htmlEsc(boro) + '" data-grade="' + htmlEsc(grade || '') + '">'
+  return '<details class="boro-compare" data-boro="' + htmlEsc(boro) + '" data-grade="' + htmlEsc(grade || '') + '" data-score="' + htmlEsc(score != null ? String(score) : '') + '">'
     + '<summary>How does ' + htmlEsc(boro) + ' compare?</summary>'
     + '<div class="boro-compare-body">Loading…</div></details>';
 }
@@ -797,9 +809,9 @@ function boroCompareHtml(boro, grade) {
 // cuisine_description (loadCuisineGradeDist) — "How do Japanese restaurants
 // compare?" Fetch deferred to first open via the same capturing #results
 // toggle listener.
-function cuisineCompareHtml(cuisine, grade) {
+function cuisineCompareHtml(cuisine, grade, score) {
   if (!cuisine) return '';
-  return '<details class="cuisine-compare" data-cuisine="' + htmlEsc(cuisine) + '" data-grade="' + htmlEsc(grade || '') + '">'
+  return '<details class="cuisine-compare" data-cuisine="' + htmlEsc(cuisine) + '" data-grade="' + htmlEsc(grade || '') + '" data-score="' + htmlEsc(score != null ? String(score) : '') + '">'
     + '<summary>How do ' + htmlEsc(cuisine) + ' restaurants compare?</summary>'
     + '<div class="cuisine-compare-body">Loading…</div></details>';
 }
@@ -1577,7 +1589,12 @@ resultsEl.addEventListener('toggle', async e => {
   const pct = Math.round(dist.A / dist.total * 100);
   const g = d.dataset.grade;
   const thisIs = g === 'A' ? 'graded A — in the majority' : g ? 'graded ' + g + ' — in the minority' : 'not currently graded';
-  body.textContent = `About ${pct} in 100 graded ${d.dataset.boro} restaurants are A. This one is ${thisIs}.`;
+  let text = `About ${pct} in 100 graded ${d.dataset.boro} restaurants are A. This one is ${thisIs}.`;
+  const avg = g && dist.avgScore ? dist.avgScore[g] : null;
+  if (avg != null && d.dataset.score) {
+    text += ` Restaurants graded ${g} in ${d.dataset.boro} average a score of ${avg.toFixed(1)} — this one scored ${d.dataset.score}.`;
+  }
+  body.textContent = text;
 }, true);
 // Same pattern for the per-cuisine comparison panel.
 resultsEl.addEventListener('toggle', async e => {
@@ -1590,7 +1607,12 @@ resultsEl.addEventListener('toggle', async e => {
   const pct = Math.round(dist.A / dist.total * 100);
   const g = d.dataset.grade;
   const thisIs = g === 'A' ? 'graded A — in the majority' : g ? 'graded ' + g + ' — in the minority' : 'not currently graded';
-  body.textContent = `About ${pct} in 100 graded ${d.dataset.cuisine} restaurants citywide are A. This one is ${thisIs}.`;
+  let text = `About ${pct} in 100 graded ${d.dataset.cuisine} restaurants citywide are A. This one is ${thisIs}.`;
+  const avg = g && dist.avgScore ? dist.avgScore[g] : null;
+  if (avg != null && d.dataset.score) {
+    text += ` ${d.dataset.cuisine} restaurants graded ${g} citywide average a score of ${avg.toFixed(1)} — this one scored ${d.dataset.score}.`;
+  }
+  body.textContent = text;
 }, true);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);

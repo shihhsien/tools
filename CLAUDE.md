@@ -103,8 +103,9 @@ booking links built from name+address whenever `dba` is present: "Map ↗" (v1.2
 `google.com/maps/search/?api=1&query=NAME ADDRESS` (a place search that lands on the
 Google place card with its rating/reviews — replaced the old bare `?q=LAT,LNG`
 coordinate pin, which selected nothing), "Yelp ↗" (v1.21.0) →
-`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`, and "Resy ↗" (v1.23.0) →
-`resy.com/cities/ny/venues?query=NAME`. The link-out approach is deliberate:
+`yelp.com/search?find_desc=NAME&find_loc=ADDRESS`, and "Resy ↗" (v1.23.0, URL corrected
+v1.42.0) → `resy.com/cities/new-york-ny/search?query=NAME` (Resy's current city-slug +
+route; the original `cities/ny/venues?query=NAME` 404s). The link-out approach is deliberate:
 Yelp's Fusion API has no free tier (reviews need the paid Plus plan), returns only 3
 truncated excerpts, and blocks browser calls (no CORS) by design — so inline Yelp data
 would need a paid key plus a Worker proxy for 3 snippets; Resy has no public API at
@@ -821,32 +822,40 @@ network-free beyond its own search).
 ### Borough comparison (v1.31.0)
 
 Each card with a borough carries a collapsed `<details class="boro-compare" data-boro=…
-data-grade=…>` ("How does {Boro} compare?"). `loadBoroGradeDist(boro)` runs the same
-`$group=grade` aggregate scoped to one borough (`upper(boro)='BROOKLYN' and grade in
-('A','B','C')`, via `getJSON`), cached per borough in `boroDistCache`. The fetch is
-**deferred to first open**: a single **capturing** `toggle` listener on `#results` (capturing
-because the `toggle` event doesn't bubble) catches the panel's expansion, guards on
-`.boro-compare` + `.open` + a `data-loaded` once-flag, fetches, and writes
-`About N in 100 graded {Boro} restaurants are A. This one is graded X — in the
-majority/minority.` On failure the body reads "Couldn't load borough comparison." Because the
-fetch only fires on a user toggle, **a plain search makes no extra `43nn-pn8j` request** and no
-existing card test (which never opens the panel) is perturbed — same lazy strategy as the
-about-panel citywide figure (v1.29.0).
+data-grade=… data-score=…>` ("How does {Boro} compare?"). `loadBoroGradeDist(boro)` runs the
+same `$group=grade` aggregate scoped to one borough (`upper(boro)='BROOKLYN' and grade in
+('A','B','C')`, via `getJSON`), now also selecting `avg(score) as avg_score` per grade
+(v1.42.0), cached per borough in `boroDistCache` (`{ A, B, C, total, avgScore: {A,B,C} }`).
+The fetch is **deferred to first open**: a single **capturing** `toggle` listener on
+`#results` (capturing because the `toggle` event doesn't bubble) catches the panel's
+expansion, guards on `.boro-compare` + `.open` + a `data-loaded` once-flag, fetches, and
+writes `About N in 100 graded {Boro} restaurants are A. This one is graded X — in the
+majority/minority.` When `avgScore[grade]` is available (v1.42.0), a second sentence is
+appended: `Restaurants graded {grade} in {Boro} average a score of {avg} — this one scored
+{score}.` (omitted if the aggregate response has no `avg_score`, e.g. an older cached
+response shape — graceful degradation, same as the count-only sentence). On failure the body
+reads "Couldn't load borough comparison." Because the fetch only fires on a user toggle, **a
+plain search makes no extra `43nn-pn8j` request** and no existing card test (which never opens
+the panel) is perturbed — same lazy strategy as the about-panel citywide figure (v1.29.0).
 
 ### Cuisine comparison (v1.39.0)
 
 Same pattern as the v1.31.0 borough comparison, scoped to `cuisine_description` instead
 of `boro`. Every card whose row has a `cuisine_description` (already fetched by
 `SELECT_FIELDS`, previously only shown as plain text in `.meta`) gains a second collapsed
-panel — `cuisineCompareHtml(cuisine, grade)` renders `<details class="cuisine-compare"
-data-cuisine=… data-grade=…>` ("How do {Cuisine} restaurants compare?"). On first open, a
-second capturing `toggle` listener on `#results` (same `.open`/`data-loaded` once-flag
-guard as the borough panel) calls `loadCuisineGradeDist(cuisine)`, which runs the same
-`$group=grade` aggregate scoped via `upper(cuisine_description)='JAPANESE' and grade in
-('A','B','C')` (cached per cuisine in `cuisineDistCache`), and writes "About N in 100
-graded {Cuisine} restaurants citywide are A. This one is graded X — in the
-majority/minority." On failure the body reads "Couldn't load cuisine comparison." Like the
-borough panel, the fetch is deferred to a user toggle, so a plain search makes no extra
+panel — `cuisineCompareHtml(cuisine, grade, score)` renders `<details class="cuisine-compare"
+data-cuisine=… data-grade=… data-score=…>` ("How do {Cuisine} restaurants compare?"). On
+first open, a second capturing `toggle` listener on `#results` (same `.open`/`data-loaded`
+once-flag guard as the borough panel) calls `loadCuisineGradeDist(cuisine)`, which runs the
+same `$group=grade` aggregate scoped via `upper(cuisine_description)='JAPANESE' and grade in
+('A','B','C')`, also selecting `avg(score) as avg_score` per grade (v1.42.0, cached per
+cuisine in `cuisineDistCache` as `{ A, B, C, total, avgScore: {A,B,C} }`), and writes "About N
+in 100 graded {Cuisine} restaurants citywide are A. This one is graded X — in the
+majority/minority." When `avgScore[grade]` is available, a second sentence is appended:
+"{Cuisine} restaurants graded {grade} citywide average a score of {avg} — this one scored
+{score}." (omitted when the aggregate has no `avg_score` — graceful degradation). On failure
+the body reads "Couldn't load cuisine comparison." Like the borough panel, the fetch is
+deferred to a user toggle, so a plain search makes no extra
 `43nn-pn8j` request and no existing card test is perturbed. Cuisine values are
 restaurant-self-reported free text (e.g. "Japanese", "Pizza", "Coffee/Tea") — the
 comparison is illustrative ("how strict is grading for this category citywide"), not a
@@ -1098,7 +1107,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (81 cases, 362 assertions — all must pass):**
+**Required test cases (83 cases, 360 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -1200,6 +1209,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 75b | Sparkline hidden for a single inspection | one inspection → no `.sparkline` |
 | 76 | Near-me results gain sort/filter controls (v1.41.0) | 3 graded restaurants within radius → `.sort-row`/`#sort-select` present with a `distance` option; `.filter-row` present (3 distinct grades); `grade-asc` puts the A restaurant first; clicking the C filter chip shows only the C card and status reads "1 of 3 shown" |
 | 76b | Near-me single result has no sort/filter row | one restaurant within radius → no `.sort-row`, no `.filter-row` |
+| 77 | Borough comparison includes average-score sentence (v1.42.0) | `$group=grade` mock includes `avg_score`; opening `.boro-compare` shows "Restaurants graded A in Brooklyn average a score of 7.5 — this one scored 5." |
+| 77b | Cuisine comparison includes average-score sentence (v1.42.0) | `$group=grade` mock includes `avg_score`; opening `.cuisine-compare` shows "Japanese restaurants graded A citywide average a score of 6.2 — this one scored 5." |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1254,6 +1265,9 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the cuisine-comparison tests (tests 74/74b, v1.39.0): identical structure to the borough-comparison tests (65/65b), just swap the dimension. Mock a single `43nn-pn8j` row with `cuisine_description: 'Japanese'` (e.g. `MAZZAT` with `cuisine_description:'Japanese'`, grade A). Test 74: function handler — `u.includes('group=grade')` sets `cuisineHit=true`, captures `cuisineUrl`, returns `J([{grade:'A',n:'850'},{grade:'B',n:'110'},{grade:'C',n:'40'}])`; otherwise count `searchCalls` and return `J([MAZZAT])`. After a plain search assert `.cuisine-compare` present, `!cuisineHit && searchCalls===1` (deferred), and the summary names the cuisine ("Japanese"). Click `.cuisine-compare summary`, `waitForFunction` until `.cuisine-compare-body` no longer contains "Loading", then assert `cuisineHit`, `decodeURIComponent(cuisineUrl)` includes `upper(cuisine_description)='JAPANESE'`, and the body includes `85 in 100` + `majority` (850/1000 → 85%). Test 74b: make the cuisine query and the `data.ny.gov`/`corsproxy.io` failover all return 500 → assert the body includes `Couldn't load`. **Note:** like the borough/dist queries, this only fires on a user toggle, so no other test that counts `43nn-pn8j` calls is affected.
 - For the score-history sparkline tests (tests 75/75b, v1.40.0): plain DOHMH search (`#q`+`#go`), single `43nn-pn8j` mock returning multi-row fixtures that share one `camis` so `groupByRestaurant` folds them into one restaurant's `history`. Test 75: three rows with distinct `inspection_date`s and scores `5`/`18`/`30` (grades A/B/C). After `.card`, assert `.sparkline` present, `.spark-bar` count `=== 3`, the bars are oldest-first (read each bar's `spark-A/B/C` band class via `$$eval` — index 0 is `spark-C` for the score-30 oldest inspection, index 2 is `spark-A` for the score-5 newest), and `.sparkline-label` text includes `lower is better`. Bars are colour-banded by the *score's implied grade* (`≤13` A / `≤27` B / `28+` C), not the row's letter grade, and ordered via `history.reverse()` (history is newest-first). Test 75b: a single inspection (`J([MAZZAT])`) → assert `.sparkline` is absent (`sparklineHtml` needs ≥2 numeric scores). Adds no network calls; existing multi-inspection card tests (36/54/64) gain a sibling `.sparkline` but assert against unrelated selectors, so they're unaffected.
 - For the near-me sort/filter tests (tests 76/76b, v1.41.0): mock geolocation via `page.addInitScript` (same pattern as tests 48/48b) at `40.68,-73.99`. Test 76: mock `43nn-pn8j` → `J([NEAR_A, NEAR_B, NEAR_C])`, three fixtures with distinct `latitude`/`longitude` close to the mocked position, distinct grades (C/A/B) and distinct `dba`s, so all three are within `NEAR_RADIUS` and span 3 grade categories. Click `#near`, wait for `.card`. Assert `.sort-row`/`#sort-select` present and its `option` values include `distance`; assert `.filter-row` present with chips for A/B/C. `page.selectOption('#sort-select', 'grade-asc')` → assert the first `.name` is the grade-A restaurant. Click the C `.filter-chip` → assert exactly one visible `.card` (the grade-C restaurant) and `#status` includes `1 of 3 shown`. Test 76b: mock `43nn-pn8j` → `J([NEAR_A])` (one restaurant) → assert no `.sort-row` and no `.filter-row`.
+- **`.filter-chip` selectors must account for the leading `<span>Filter</span>`** (tests 70/76): `filterControlHtml` renders `<div class="filter-row"><span>Filter</span>` followed by the chip buttons, so `.filter-chip:nth-child(N)` is off by one — the first chip (A) is `:nth-child(2)`, not `:nth-child(1)`. Either use `.filter-chip:nth-child(${chips.indexOf(label) + 2})` or `$$('.filter-chip')[i]` + `.click()`.
+- For the borough/cuisine average-score tests (tests 77/77b, v1.42.0): same structure as tests 65/74 but the `$group=grade` mock rows include an `avg_score` field, e.g. `J([{grade:'A',n:'880',avg_score:'7.5'},{grade:'B',n:'90',avg_score:'18'},{grade:'C',n:'30',avg_score:'32'}])` (test 77, scoped to Brooklyn) / `J([{grade:'A',n:'850',avg_score:'6.2'},{grade:'B',n:'110',avg_score:'17'},{grade:'C',n:'40',avg_score:'33'}])` (test 77b, scoped to Japanese). Mock the search row with `grade:'A', score:'5'`. After opening `.boro-compare`/`.cuisine-compare`, assert the body includes the avg score (`7.5`/`6.2`) and `this one scored 5`. Tests 65/65b/74/74b's `$group=grade` mocks omit `avg_score` — `loadBoroGradeDist`/`loadCuisineGradeDist` leave `avgScore[g]` as `null` in that case, so the sentence is silently omitted (graceful degradation, no regression to those tests).
+- For function-handler mocks that need to return an empty result set (e.g. test 20's progressive-fallback "no results" branch): always call `r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })` explicitly — do **not** call `r.fulfill(J([]))`. `J(...)` returns `{ body: [...] }` with no `status`/`contentType` and a non-string `body`, which `r.fulfill` cannot serialize; the request hangs and the page's `waitForSelector` times out at 15s with no error surfaced until the outer catch. `J`/`TX`/`E` are designed for `setupRoute`'s tuple form (`[pattern, J(rows)]`), which wraps them correctly — not for direct use inside a custom function handler.
 - For the status re-announce test (test 59, v1.27.1): no mocks needed for the search path — exercise the empty-input guard, which calls `setStatus` directly with no intervening status change (a successful search interleaves a "Looking up…" status, so its result already differs from the prior text and re-announces naturally — the guard double-press is the genuine back-to-back-identical case). Build `ZWSP = String.fromCharCode(0x200B)` (don't type the literal char — Write/Edit can mangle invisible codepoints). Click `#go` with `#q` empty, assert `#status` text includes `Enter a restaurant name` and does NOT include `ZWSP`. Click `#go` again (still empty), assert the status now includes both `Enter a restaurant name` **and** `ZWSP` (the toggle appended it so the aria-live region re-announces). The substring checks elsewhere are unaffected because U+200B is invisible and `.includes()` on the visible text still matches.
 - For the multi-result sort test (test 69, v1.35.0): three fixtures sharing a query term but distinct `dba`s — `AAA PLACE` (grade C, score 30), `BBB PLACE` (grade A, score 3), `CCC PLACE` (grade B, score 15) — mocked via `J([AAA, BBB, CCC])` for a search on "PLACE" (all three match). None carry a `dist` field. Wait for `.card`, then assert `.sort-row` and `#sort-select` are present, and `#sort-select option` values are exactly `default`/`grade-asc`/`grade-desc`/`name` (no `distance` option, since no group has `dist`). Assert default `.name` order is `[AAA, BBB, CCC]` (fetch order). `page.selectOption('#sort-select', 'grade-asc')` → assert order `[BBB, CCC, AAA]` (A, B, C by `gradeRank`). `page.selectOption('#sort-select', 'name')` → assert order `[AAA, BBB, CCC]` (alphabetical). Then a separate plain single-result search (`J([MAZZAT])`) asserts `.sort-row` is absent (`groups.length === 1`).
 - For the multi-result grade filter tests (tests 70/70b, v1.36.0): reuse the test 69 `AAA PLACE` (grade C) / `BBB PLACE` (grade A) / `CCC PLACE` (grade B) fixtures plus a new `DDD PLACE` (no grade, i.e. Pending), mocked via `J([AAA, BBB, CCC, DDD])` for a search on "PLACE". Wait for `.card`, then assert `.filter-row` is present with exactly 4 `.filter-chip`s in order A/B/C/Pending (text content `A`/`B`/`C`/`Pending`), all `aria-pressed="false"`. Click the A chip → assert exactly 1 visible card (`BBB PLACE`) and `#status` includes `1 of 4 shown`. Click the Pending chip too (additive) → assert 2 visible cards (`BBB PLACE`+`DDD PLACE`) and `#status` includes `2 of 4 shown`. Click both chips again to deselect → assert all 4 cards visible and `#status` reads the plain `4 match(es) · official data` (no `shown` suffix). To check composition with sort, `page.selectOption('#sort-select', 'grade-asc')` then click the C chip → assert exactly 1 visible card (`AAA PLACE`). Test 70b: a separate search returning two same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would do nothing) while `.sort-row` is still present.
@@ -1347,7 +1361,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.41.1**
+Current: **v1.42.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1412,6 +1426,7 @@ Notable versions:
 - v1.40.0 — score-history sparkline: each card with ≥2 numeric inspection scores gains a compact bar chart (`sparklineHtml`) of its scores across the (≤6) history window, oldest-left to newest-right, surfacing the score *trajectory* at a glance without expanding the history timeline (complements the v1.24.0 two-point trend indicator). Each `.spark-bar`'s height ∝ score (taller = worse, matching `scoreBarHtml`; floored so a near-zero score still shows a stub, capped against `max(28, …scores)`) and is colour-banded by the score's implied grade (`≤13` A blue / `≤27` B green / `28+` C orange), with a "score history · lower is better" label and a `DATE: score N` hover title per bar. Pure client-side from already-fetched rows; rendered by `cardHtml` between the trend line and the grade-A consistency line; guarded on ≥2 numeric scores (same spirit as trend/history). Tests 75–75b added (79 cases, 352 assertions)
 - v1.41.0 — "📍 Graded restaurants near me" results now reuse the v1.35.0/v1.36.0 multi-result sort and grade-filter controls: `searchNearby` populates `currentGroups`/`baseStatusText` and renders `sortControlHtml`/`filterControlHtml` (when more than one result) ahead of `#cards-wrap`, exactly like a multi-match name search. Since every near-me group carries `dist`, `sortGroups`'s existing `distance` option becomes available — "As found" already matches nearest-first, so this adds an explicit re-sort plus the ability to sort by grade or name, and to filter to just the A's (or any grade combination) among nearby restaurants. No new code paths — purely wires already-built controls into the second render call site. Tests 76–76b added (81 cases, 362 assertions)
 - v1.41.1 — code-review fix: the "no restaurants within radius" branch of `searchNearby` now also resets `currentGroups`/`activeFilters`/`currentSortMode` (previously only the success path did, mirroring `render()`'s zero-groups branch). A stale `currentGroups`/`activeFilters` from a prior multi-result search or near-me run could otherwise persist after a near-me search that finds nothing — harmless in practice (`updateCardsWrap` no-ops without a `#cards-wrap`), but inconsistent with `render()` and worth closing. No test-count change.
+- v1.42.0 — the v1.31.0/v1.39.0 borough/cuisine grade-comparison panels gain an average-score sentence: `loadBoroGradeDist`/`loadCuisineGradeDist`'s `$group=grade` aggregate now also selects `avg(score) as avg_score` (zero new requests — same query, one more column), and on open the panel appends "Restaurants graded {grade} in {Boro}/{Cuisine} [citywide] average a score of {avg} — this one scored {score}." when the data includes it, degrading silently (count-only sentence unchanged) when it doesn't. Also fixes a user-reported bug: the "Resy ↗" review link (`https://resy.com/cities/ny/venues?query=NAME`, v1.23.0) 404s — Resy's current city slug is `new-york-ny` and the search route is `/search`, not `/venues`; corrected to `https://resy.com/cities/new-york-ny/search?query=NAME`. Tests 77–77b added (83 cases, 360 assertions)
 
 ## Known-good Maps parsing baseline
 

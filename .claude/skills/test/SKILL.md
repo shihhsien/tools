@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 81 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 83 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 81-case Playwright test suite, fix any failures, and confirm 362/362 assertions pass.
+Run the full 83-case Playwright test suite, fix any failures, and confirm 360/360 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `362 tests: 362 passed, 0 failed`
+Expected output ends with: `360 tests: 360 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -643,6 +643,35 @@ click `#near`, wait for `.card`.
 
 Adds no network calls; existing multi-inspection card tests (36/54/64) gain a sibling `.sparkline`
 but assert against unrelated selectors, so they're unaffected.
+
+**Gotcha — `.filter-chip:nth-child(N)` is off by one.** `filterControlHtml` renders
+`<div class="filter-row"><span>Filter</span>` before the chip buttons, so the first chip (A) is
+`:nth-child(2)`, not `:nth-child(1)`. Compute the index as `chips.indexOf(label) + 2` (where
+`chips` is from `$$eval('.filter-chip', els => els.map(e => e.textContent))`), or click via
+`$$('.filter-chip')[i]` instead of an `nth-child` CSS selector.
+
+### Borough/cuisine average-score comparison (tests 77/77b, v1.42.0)
+Same structure as tests 65/74, but the `$group=grade` mock rows include `avg_score`:
+- **Test 77 (borough):** mock a row with `dba:'MAZZAT', boro:'Brooklyn', grade:'A', score:'5'`.
+  `u.includes('group=grade')` → `J([{grade:'A',n:'880',avg_score:'7.5'},{grade:'B',n:'90',avg_score:'18'},{grade:'C',n:'30',avg_score:'32'}])`;
+  else → `J([ROW])`. Search MAZZAT, wait for `.card`, click `.boro-compare summary`,
+  `waitForFunction` until `.boro-compare-body` lacks "Loading", then assert the body includes
+  `7.5` and `this one scored 5`.
+- **Test 77b (cuisine):** same `ROW` (also `cuisine_description:'Japanese'`).
+  `u.includes('group=grade')` → `J([{grade:'A',n:'850',avg_score:'6.2'},{grade:'B',n:'110',avg_score:'17'},{grade:'C',n:'40',avg_score:'33'}])`;
+  else → `J([ROW])`. Click `.cuisine-compare summary`, wait for the body to lose "Loading", then
+  assert it includes `6.2` and `this one scored 5`.
+
+Tests 65/65b/74/74b's `$group=grade` mocks have no `avg_score` field — `loadBoroGradeDist`/
+`loadCuisineGradeDist` leave `avgScore[g] = null` in that case, so the average-score sentence is
+silently omitted and those tests are unaffected.
+
+**Gotcha — `r.fulfill(J([]))` hangs.** `J`/`TX`/`E` are shaped for `setupRoute`'s tuple form
+(`[pattern, J(rows)]`), which adds `status`/`contentType` and `JSON.stringify`s the body. Calling
+`r.fulfill(J([]))` directly inside a custom function-handler mock passes `{ body: [] }` —
+`r.fulfill` can't serialize a non-string body, so the request hangs and `waitForSelector` times
+out at 15s with no other error. Always write `r.fulfill({ status: 200, contentType:
+'application/json', body: JSON.stringify([]) })` explicitly in function handlers.
 
 ### Offline result cache (test 72, v1.37.0)
 One `T()` runs two phases on the same page so `localStorage` persists across them.
