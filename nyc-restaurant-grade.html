@@ -275,7 +275,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.40.0</div>
+<div class="ver">v1.41.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -1121,8 +1121,15 @@ async function searchNearby() {
         return;
       }
       const extra = groups.length > NEAR_MAX ? ` · showing nearest ${NEAR_MAX}` : '';
-      setStatus(`${groups.length} restaurant(s) within ${NEAR_RADIUS} m · nearest first${extra}`);
-      resultsEl.innerHTML = groups.slice(0, NEAR_MAX).map(cardHtml).join('');
+      const shown = groups.slice(0, NEAR_MAX);
+      baseStatusText = `${groups.length} restaurant(s) within ${NEAR_RADIUS} m · nearest first${extra}`;
+      setStatus(baseStatusText);
+      currentGroups = shown;
+      activeFilters = new Set();
+      currentSortMode = 'default';
+      const sortControl = shown.length > 1 ? sortControlHtml(shown) : '';
+      const filterControl = shown.length > 1 ? filterControlHtml(shown) : '';
+      resultsEl.innerHTML = sortControl + filterControl + '<div id="cards-wrap">' + shown.map(cardHtml).join('') + '</div>';
     } catch (e) {
       setError(`Couldn't load nearby restaurants (${htmlEsc(e.message)}).`);
     } finally {

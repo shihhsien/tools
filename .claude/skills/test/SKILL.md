@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 79 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 81 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 79-case Playwright test suite, fix any failures, and confirm 352/352 assertions pass.
+Run the full 81-case Playwright test suite, fix any failures, and confirm 362/362 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 79 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 81 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `352 tests: 352 passed, 0 failed`
+Expected output ends with: `362 tests: 362 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -627,6 +627,19 @@ one `camis` so `groupByRestaurant` folds them into one restaurant's `history`.
   `28+` C), and ordered via `history.reverse()` (history is newest-first).
 - **Test 75b:** a single inspection (`J([MAZZAT])`) → assert `.sparkline` is absent
   (`sparklineHtml` needs ≥2 numeric scores).
+
+### Near-me sort/filter controls (tests 76/76b, v1.41.0)
+Mock geolocation via `page.addInitScript` at `40.68,-73.99` (same pattern as tests 48/48b),
+click `#near`, wait for `.card`.
+- **Test 76:** mock `43nn-pn8j` → `J([NEAR_A, NEAR_B, NEAR_C])` — three fixtures with
+  `latitude`/`longitude` near the mocked position, distinct `dba`s, and distinct grades
+  (e.g. C/A/B) so all three render and span 3 categories. Assert `.sort-row`/`#sort-select`
+  present and its `option` values include `distance` (every near-me group carries `dist`);
+  assert `.filter-row` present with chips for A/B/C. `page.selectOption('#sort-select',
+  'grade-asc')` → assert the first `.name` is the grade-A restaurant. Click the C
+  `.filter-chip` → assert exactly one visible `.card` and `#status` includes `1 of 3 shown`.
+- **Test 76b:** mock `43nn-pn8j` → `J([NEAR_A])` (one restaurant) → assert no `.sort-row`
+  and no `.filter-row`.
 
 Adds no network calls; existing multi-inspection card tests (36/54/64) gain a sibling `.sparkline`
 but assert against unrelated selectors, so they're unaffected.
