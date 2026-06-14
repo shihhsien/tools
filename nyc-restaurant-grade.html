@@ -275,7 +275,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.41.0</div>
+<div class="ver">v1.41.1</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -1117,6 +1117,9 @@ async function searchNearby() {
       dbg(`nearby: ${rows.length} rows -> ${groups.length} restaurants in radius`);
       if (!groups.length) {
         resultsEl.innerHTML = '';
+        currentGroups = [];
+        activeFilters = new Set();
+        currentSortMode = 'default';
         setStatus(`No restaurants with inspection records found within ${NEAR_RADIUS} m.`);
         return;
       }
