@@ -265,6 +265,7 @@
     <p>Grades reflect points for health-code violations found at inspection &mdash; <b>lower is better</b>. A&nbsp;=&nbsp;0&ndash;13&nbsp;points, B&nbsp;=&nbsp;14&ndash;27, C&nbsp;=&nbsp;28 or more.</p>
     <p><b>Critical</b> violations (pests, unsafe food temperatures, bare-hand contact) carry more points than upkeep issues, so one critical finding can move a grade more than several minor ones.</p>
     <p>About <b><span id="a-rate">9 in 10</span></b> NYC restaurants score an A, so a B or C is genuinely worth noting. But an A right at 13 points is borderline &mdash; the <b>score matters as much as the letter</b>.</p>
+    <p>Across all graded inspections, the average score is about <b><span id="avg-score">8</span> points</b> &mdash; well within the A range, since most violations found are minor.</p>
     <p><b>&ldquo;Grade Pending&rdquo;</b> usually means a recent below-A inspection awaiting a re-inspection (often within about 30 days) or an open appeal &mdash; not a final grade.</p>
     <p><b>&ldquo;Closed by DOHMH&rdquo;</b> means a serious hazard (e.g. severe pests, no hot water); the restaurant can&rsquo;t reopen until it&rsquo;s fixed and the city re-approves.</p>
     <p>Inspections recur on a sliding schedule: roughly once a year for an A, more often (every few months) for a B or C.</p>
@@ -275,7 +276,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.42.0</div>
+<div class="ver">v1.43.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -303,6 +304,7 @@ const nearBtn   = document.getElementById('near');
 const osmAttrEl = document.getElementById('osm-attr');
 const aboutEl   = document.getElementById('about');
 const aRateEl   = document.getElementById('a-rate');
+const avgScoreEl = document.getElementById('avg-score');
 const DEBUG   = new URLSearchParams(location.search).has('debug');
 const debugEl = document.getElementById('debug-log');
 if (DEBUG) debugEl.style.display = 'block';
@@ -500,15 +502,30 @@ let gradeDistPromise = null;
 function loadGradeDist() {
   if (!gradeDistPromise) gradeDistPromise = (async () => {
     try {
-      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n')
+      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n,avg(score) as avg_score')
         + '&$where=' + encodeURIComponent("grade in ('A','B','C')") + '&$group=grade';
       const rows = await getJSON(url);
       const counts = { A: 0, B: 0, C: 0 };
-      for (const r of rows) { const g = String(r.grade || '').toUpperCase(); if (g in counts) counts[g] = Number(r.n) || 0; }
+      const avgScore = { A: null, B: null, C: null };
+      for (const r of rows) {
+        const g = String(r.grade || '').toUpperCase();
+        if (!(g in counts)) continue;
+        counts[g] = Number(r.n) || 0;
+        if (r.avg_score != null) avgScore[g] = Number(r.avg_score);
+      }
       const total = counts.A + counts.B + counts.C;
       if (!total) return null;
       if (aRateEl) aRateEl.textContent = Math.round(counts.A / total * 100) + ' in 100';
-      return { ...counts, total };
+      if (avgScoreEl) {
+        let weighted = 0, weight = 0;
+        for (const g of ['A', 'B', 'C']) {
+          if (avgScore[g] == null) continue;
+          weighted += avgScore[g] * counts[g];
+          weight += counts[g];
+        }
+        if (weight) avgScoreEl.textContent = (weighted / weight).toFixed(1);
+      }
+      return { ...counts, total, avgScore };
     } catch { return null; }
   })();
   return gradeDistPromise;

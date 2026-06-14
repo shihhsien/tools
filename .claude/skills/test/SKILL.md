@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 83 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 84 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 83-case Playwright test suite, fix any failures, and confirm 360/360 assertions pass.
+Run the full 84-case Playwright test suite, fix any failures, and confirm 378/378 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `360 tests: 360 passed, 0 failed`
+Expected output ends with: `378 tests: 378 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -672,6 +672,16 @@ silently omitted and those tests are unaffected.
 `r.fulfill` can't serialize a non-string body, so the request hangs and `waitForSelector` times
 out at 15s with no other error. Always write `r.fulfill({ status: 200, contentType:
 'application/json', body: JSON.stringify([]) })` explicitly in function handlers.
+
+### Citywide average inspection score (test 78, v1.43.0)
+Plain DOHMH search with `J([MAZZAT])`. Before opening `#about`, assert `#avg-score` text
+`=== '8'` (the static placeholder). Mock the `$group=grade` dist query
+(`u.includes('group=grade')`) to return `[{grade:'A',n:'910',avg_score:'7'},
+{grade:'B',n:'70',avg_score:'18'},{grade:'C',n:'20',avg_score:'32'}]` — weighted average
+`(7*910 + 18*70 + 32*20) / 1000 = 8.27` → `.toFixed(1)` = `'8.3'`. Click `#about > summary`,
+`waitForFunction` until `#avg-score` text !== `'8'`, then assert it `=== '8.3'`. Reuse the
+no-`avg_score` dist mocks from tests 61/61b to assert `#avg-score` stays `'8'` there — no
+regression to the existing A-rate-only assertions.
 
 ### Offline result cache (test 72, v1.37.0)
 One `T()` runs two phases on the same page so `localStorage` persists across them.
