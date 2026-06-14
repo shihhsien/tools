@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 73 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 77 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 73-case Playwright test suite, fix any failures, and confirm 342/342 assertions pass.
+Run the full 77-case Playwright test suite, fix any failures, and confirm 358/358 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 73 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 77 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `342 tests: 342 passed, 0 failed`
+Expected output ends with: `358 tests: 358 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -576,6 +576,44 @@ composition with sort: `page.selectOption('#sort-select', 'grade-asc')` then cli
 assert exactly 1 visible card (`AAA PLACE`). **Test 70b:** a separate search returning two
 same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would
 do nothing) while `.sort-row` is still present.
+
+### Web Share API handoff (tests 73/73b, v1.38.0)
+Plain DOHMH search (`#q` fill + `#go`), `J([MAZZAT])`. Before `goto`, register via `addInitScript`:
+```js
+page.addInitScript(() => {
+  window.__clipboardCalled = false;
+  navigator.clipboard.writeText = () => { window.__clipboardCalled = true; return Promise.resolve(); };
+  navigator.share = data => { window.__shared = data; return Promise.resolve(); }; // test 73
+  // test 73b instead: navigator.share = () => Promise.reject(new DOMException('cancel', 'AbortError'));
+});
+```
+`addInitScript` can define `navigator.share`/override `navigator.clipboard.writeText` on a `file://`
+page even though headless Chromium doesn't implement `navigator.share` by default. After `.card`
+renders, capture `.copy-link`'s `textContent` (the original label), click it, then:
+- **Test 73:** assert `window.__shared.url` includes `q=MAZZAT`, `window.__shared.title` includes
+  `MAZZAT`, `.copy-link` `textContent` is unchanged from the captured original (no "Link copied"
+  flash — `navigator.share` resolving returns early before the clipboard path), and
+  `window.__clipboardCalled === false`.
+- **Test 73b:** assert `.copy-link` `textContent` is unchanged and `window.__clipboardCalled ===
+  false` — an `AbortError` (user cancelled the share sheet) returns early without falling back to
+  clipboard or flashing "Copy failed".
+
+### Cuisine comparison (tests 74/74b, v1.39.0)
+Identical structure to the borough-comparison tests (65/65b), just a different dimension. Mock a
+single `43nn-pn8j` row with `cuisine_description: 'Japanese'` and grade A (e.g. `MAZZAT` with
+`cuisine_description:'Japanese'`). The query carries `$group=grade`, so split the `43nn-pn8j`
+mock the same way as test 61/65.
+- **Test 74:** function handler — `u.includes('group=grade')` sets `cuisineHit=true`, captures
+  `cuisineUrl`, returns `J([{grade:'A',n:'850'},{grade:'B',n:'110'},{grade:'C',n:'40'}])`; else
+  count `searchCalls`, return `J([MAZZAT])`. After a plain search: `.cuisine-compare` present,
+  `!cuisineHit && searchCalls===1`, summary names the cuisine ("Japanese"). Click
+  `.cuisine-compare summary`, `waitForFunction` until `.cuisine-compare-body` lacks "Loading",
+  then assert `cuisineHit`, `decodeURIComponent(cuisineUrl)` includes
+  `upper(cuisine_description)='JAPANESE'`, body includes `85 in 100` and `majority`.
+- **Test 74b:** cuisine query + `data.ny.gov` + `corsproxy.io` all 500 → body includes
+  `Couldn't load`.
+
+Only fires on a user toggle, so no other test is affected.
 
 ### Offline result cache (test 72, v1.37.0)
 One `T()` runs two phases on the same page so `localStorage` persists across them.

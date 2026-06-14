@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (73 cases, 342 assertions)
+- `.claude/skills/test/` — Playwright test skill (75 cases, 349 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -436,6 +436,17 @@ client-side, no new network dependency — turns any search result (manual,
 deep-link, or resolved Maps/share link) into a shareable bookmark without
 re-deriving the iOS Shortcut flow.
 
+**Web Share API handoff (v1.38.0).** The button also carries a `data-title`
+(`"{DBA} grade — NYC Restaurant Grade"` for a single result, `"{name} — NYC
+Restaurant Grade"` for multiple). On click, when `navigator.share` exists
+(mobile Safari/Chrome), the handler calls `navigator.share({ title, url })`
+instead of the clipboard — handing off to the native share sheet (Messages,
+Mail, AirDrop, etc.), a superset of "copy". A user-cancelled share
+(`AbortError`) leaves the button text untouched (not a failure). Any other
+share failure, or the absence of `navigator.share` (desktop browsers, the
+test harness), falls through to the existing `navigator.clipboard.writeText`
+copy path unchanged. Pure client-side, no new dependency.
+
 ### Favorites / pinned list (v1.34.0)
 
 A second, manually-curated localStorage list — separate from the v1.23.0
@@ -632,9 +643,9 @@ The `<script>` is organised into labelled sections:
 |---|---|
 | Config & DOM | constants, cached element refs |
 | Small helpers | `decode`, `setStatus`, `setError`, `gradeClass`, `fmtDate`, `fmtPhone`, `fmtDist`, `fmtFreshness`, `distM` |
-| NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (tiered: primary → data.ny.gov mirror → corsproxy.io), `loadGradeDist`, `loadBoroGradeDist` |
+| NYC DOHMH API | `buildUrl`, `buildNearbyUrl`, `getJSON` (tiered: primary → data.ny.gov mirror → corsproxy.io), `loadGradeDist`, `loadBoroGradeDist`, `loadCuisineGradeDist` |
 | Violation-code categories | `splitCsvLine`, `parseViolCsv`, `loadViolCodes` (best-effort CSV enrichment) |
-| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `trendHtml`, `violationsHtml`, `historyHtml`, `lastCriticalHtml`, `gradeConsistencyHtml`, `boroCompareHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render`, `renderFromCache` |
+| Rendering | `groupByRestaurant`, `gradeContextHtml`, `scoreBarHtml`, `trendHtml`, `violationsHtml`, `historyHtml`, `lastCriticalHtml`, `gradeConsistencyHtml`, `boroCompareHtml`, `cuisineCompareHtml`, `closureBannerHtml`, `cardHtml`, `placardHtml`, `scoreAddressMatch`, `render`, `renderFromCache` |
 | Search | `search`, `searchNearby` |
 | Offline cache | `cacheKeyFor`, `loadCacheList`, `saveCache`, `findCache` (localStorage last-known results, served on full-outage failover) |
 | Maps parsing | `stripShortLinkQuery`, `nameFromUrl`, `cleanTitle`, `boroFromAddr`, `coordsFromUrl`, `buildGeoAddr`, `viaNominatim`, `viaPhoton`, `reverseGeocode`, `splitPlace`, `parseShare`, `timeoutFetch`, `viaMapu`, `viaMicrolink`, `viaJina`, `resolveMapsLink` |
@@ -808,6 +819,26 @@ majority/minority.` On failure the body reads "Couldn't load borough comparison.
 fetch only fires on a user toggle, **a plain search makes no extra `43nn-pn8j` request** and no
 existing card test (which never opens the panel) is perturbed — same lazy strategy as the
 about-panel citywide figure (v1.29.0).
+
+### Cuisine comparison (v1.39.0)
+
+Same pattern as the v1.31.0 borough comparison, scoped to `cuisine_description` instead
+of `boro`. Every card whose row has a `cuisine_description` (already fetched by
+`SELECT_FIELDS`, previously only shown as plain text in `.meta`) gains a second collapsed
+panel — `cuisineCompareHtml(cuisine, grade)` renders `<details class="cuisine-compare"
+data-cuisine=… data-grade=…>` ("How do {Cuisine} restaurants compare?"). On first open, a
+second capturing `toggle` listener on `#results` (same `.open`/`data-loaded` once-flag
+guard as the borough panel) calls `loadCuisineGradeDist(cuisine)`, which runs the same
+`$group=grade` aggregate scoped via `upper(cuisine_description)='JAPANESE' and grade in
+('A','B','C')` (cached per cuisine in `cuisineDistCache`), and writes "About N in 100
+graded {Cuisine} restaurants citywide are A. This one is graded X — in the
+majority/minority." On failure the body reads "Couldn't load cuisine comparison." Like the
+borough panel, the fetch is deferred to a user toggle, so a plain search makes no extra
+`43nn-pn8j` request and no existing card test is perturbed. Cuisine values are
+restaurant-self-reported free text (e.g. "Japanese", "Pizza", "Coffee/Tea") — the
+comparison is illustrative ("how strict is grading for this category citywide"), not a
+precise peer-group benchmark, but it's the same dataset-given label already shown in
+`.meta`, so no new taxonomy is introduced.
 
 ## Violation-code categories (v1.18.0)
 
@@ -1032,7 +1063,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (73 cases, 342 assertions — all must pass):**
+**Required test cases (77 cases, 358 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -1126,6 +1157,10 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 70b | Same-grade multi-result has no filter row | 2-result search where both results are grade A → `.filter-row` absent (filtering would do nothing), `.sort-row` still present |
 | 71 | getJSON timeout fallback (v1.36.1) | primary host never responds (route hangs, no `fulfill`/`abort`); mirror returns `J([MAZZAT])`; card renders within 15s, proving `GETJSON_TIMEOUT_MS` (10s) aborts the hung primary and falls through to the mirror instead of hanging indefinitely |
 | 72 | Offline result cache (v1.37.0) | a successful search seeds the cache and shows no `.cache-banner`; re-running the same query with all `43nn-pn8j` tiers returning 500 renders the cached card (name preserved), prepends a `.cache-banner` mentioning "cached"/"unavailable", and the status includes "cached" |
+| 73 | Web Share API handoff on supported devices (v1.38.0) | `navigator.share` stubbed to resolve; click `.copy-link` → `navigator.share` called with `{ title, url }` where `url` includes `q=MAZZAT` and `title` includes `MAZZAT`; button text unchanged (no "Link copied" flash); clipboard not used |
+| 73b | Web Share cancellation (AbortError) leaves button untouched | `navigator.share` stubbed to reject with `DOMException('cancel','AbortError')`; click `.copy-link` → button text unchanged, `navigator.clipboard.writeText` never called |
+| 74 | Cuisine comparison panel (opt-in, fetched on open, v1.39.0) | card has a collapsed `.cuisine-compare`; a plain search fires no cuisine query (1 search call); opening it runs the `$group=grade` query scoped to `upper(cuisine_description)='JAPANESE'` and shows "About 85 in 100 graded Japanese restaurants citywide are A. This one is graded A — in the majority." |
+| 74b | Cuisine comparison degrades gracefully | cuisine query (and mirror/proxy) all 500 → panel body reads "Couldn't load cuisine comparison." |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1176,6 +1211,8 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the getJSON failover tests (tests 60/60b/60c, v1.28.0): plain DOHMH search (`#q` fill + `#go`), but route the three hosts separately with hit-flags declared outside `setup`/`fn`. Test 60: `data.cityofnewyork.us` → HTTP 500, `data.ny.gov` (flag `mirrorHit`) → `J([MAZZAT])`, `corsproxy.io` (flag `proxyHit`) → also serves it; assert `mirrorHit && !proxyHit` (the official mirror is preferred over the proxy) and the card renders. Test 60b: `data.cityofnewyork.us` → 500, `data.ny.gov` → 404, `corsproxy.io` (flag) → `J([MAZZAT])`; assert `proxyHit` and the card renders (proxy is the last resort). Test 60c: `data.cityofnewyork.us` → `J([MAZZAT])`, mirror/proxy handlers set flags then `r.abort()`; assert neither was hit (primary success short-circuits — no regression). Note the mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver fetches are unaffected.
 - For the getJSON timeout-fallback test (test 71, v1.36.1): plain DOHMH search (`#q` fill + `#go`). Mock `data.cityofnewyork.us` with a route handler that does nothing — never calls `r.fulfill()`/`r.abort()`/`r.continue()` — simulating a host that accepts the connection but never responds. Mock `data.ny.gov` → `J([MAZZAT])`. `waitForSelector('.card', { timeout: 15000 })` — must resolve well under 15s since `GETJSON_TIMEOUT_MS` (10s) aborts the hung primary fetch and falls through to the mirror. If this test times out, `getJSON`'s primary-tier `fetch()` is missing its `timeoutFetch` wrapper (back to a bare `fetch()` that hangs forever on an unresponsive route).
 - For the offline-cache test (test 72, v1.37.0): one `T()` exercises two phases on the same page so `localStorage` persists between them. Phase 1 (seed): `setupRoute(p, [['43nn-pn8j', J([MAZZAT])]])`, fill `#q` MAZZAT, click `#go`, wait for `.card`, assert `.name === 'MAZZAT'` and `.cache-banner` is absent (`await p.$('.cache-banner')` is null — a fresh result is not stale). Phase 2 (outage): `await p.unroute('**/*')` then `setupRoute(p, [['43nn-pn8j', { status: 500, ct: 'text/plain', body: 'down' }]])` — the single `43nn-pn8j` pattern matches the primary, the `data.ny.gov` mirror, and the `corsproxy.io` proxy URL (all contain `43nn-pn8j`), so every tier 500s. Re-fill `#q` MAZZAT, click `#go`, `waitForSelector('.cache-banner', { timeout: 15000 })`, then assert `.name === 'MAZZAT'` (served from cache), the banner text matches `/cached|unavailable/i`, and `#status` text matches `/cached/i`. The cache is keyed on the normalized name+loc, so the same query string is required for the hit.
+- For the Web Share API tests (tests 73/73b, v1.38.0): plain DOHMH search `J([MAZZAT])`. Test 73: `page.addInitScript(() => { navigator.share = data => { window.__shared = data; return Promise.resolve(); }; navigator.clipboard.writeText = () => { window.__clipboardCalled = true; return Promise.resolve(); }; window.__clipboardCalled = false; })` before `goto` (assigning `navigator.share`/`navigator.clipboard.writeText` on a `file://` page works via `addInitScript` even though they don't exist by default in headless Chromium). After the card renders, capture `.copy-link`'s original text, click it, then assert: `window.__shared.url` includes `q=MAZZAT`, `window.__shared.title` includes `MAZZAT`, `.copy-link` textContent is unchanged (no "Link copied" flash — share handled it), and `window.__clipboardCalled === false`. Test 73b: same `addInitScript` but `navigator.share = () => Promise.reject(new DOMException('cancel', 'AbortError'))`; click `.copy-link` and assert textContent is unchanged and `window.__clipboardCalled === false` (a cancelled share is not a failure, so no clipboard fallback and no "Copy failed" flash).
+- For the cuisine-comparison tests (tests 74/74b, v1.39.0): identical structure to the borough-comparison tests (65/65b), just swap the dimension. Mock a single `43nn-pn8j` row with `cuisine_description: 'Japanese'` (e.g. `MAZZAT` with `cuisine_description:'Japanese'`, grade A). Test 74: function handler — `u.includes('group=grade')` sets `cuisineHit=true`, captures `cuisineUrl`, returns `J([{grade:'A',n:'850'},{grade:'B',n:'110'},{grade:'C',n:'40'}])`; otherwise count `searchCalls` and return `J([MAZZAT])`. After a plain search assert `.cuisine-compare` present, `!cuisineHit && searchCalls===1` (deferred), and the summary names the cuisine ("Japanese"). Click `.cuisine-compare summary`, `waitForFunction` until `.cuisine-compare-body` no longer contains "Loading", then assert `cuisineHit`, `decodeURIComponent(cuisineUrl)` includes `upper(cuisine_description)='JAPANESE'`, and the body includes `85 in 100` + `majority` (850/1000 → 85%). Test 74b: make the cuisine query and the `data.ny.gov`/`corsproxy.io` failover all return 500 → assert the body includes `Couldn't load`. **Note:** like the borough/dist queries, this only fires on a user toggle, so no other test that counts `43nn-pn8j` calls is affected.
 - For the status re-announce test (test 59, v1.27.1): no mocks needed for the search path — exercise the empty-input guard, which calls `setStatus` directly with no intervening status change (a successful search interleaves a "Looking up…" status, so its result already differs from the prior text and re-announces naturally — the guard double-press is the genuine back-to-back-identical case). Build `ZWSP = String.fromCharCode(0x200B)` (don't type the literal char — Write/Edit can mangle invisible codepoints). Click `#go` with `#q` empty, assert `#status` text includes `Enter a restaurant name` and does NOT include `ZWSP`. Click `#go` again (still empty), assert the status now includes both `Enter a restaurant name` **and** `ZWSP` (the toggle appended it so the aria-live region re-announces). The substring checks elsewhere are unaffected because U+200B is invisible and `.includes()` on the visible text still matches.
 - For the multi-result sort test (test 69, v1.35.0): three fixtures sharing a query term but distinct `dba`s — `AAA PLACE` (grade C, score 30), `BBB PLACE` (grade A, score 3), `CCC PLACE` (grade B, score 15) — mocked via `J([AAA, BBB, CCC])` for a search on "PLACE" (all three match). None carry a `dist` field. Wait for `.card`, then assert `.sort-row` and `#sort-select` are present, and `#sort-select option` values are exactly `default`/`grade-asc`/`grade-desc`/`name` (no `distance` option, since no group has `dist`). Assert default `.name` order is `[AAA, BBB, CCC]` (fetch order). `page.selectOption('#sort-select', 'grade-asc')` → assert order `[BBB, CCC, AAA]` (A, B, C by `gradeRank`). `page.selectOption('#sort-select', 'name')` → assert order `[AAA, BBB, CCC]` (alphabetical). Then a separate plain single-result search (`J([MAZZAT])`) asserts `.sort-row` is absent (`groups.length === 1`).
 - For the multi-result grade filter tests (tests 70/70b, v1.36.0): reuse the test 69 `AAA PLACE` (grade C) / `BBB PLACE` (grade A) / `CCC PLACE` (grade B) fixtures plus a new `DDD PLACE` (no grade, i.e. Pending), mocked via `J([AAA, BBB, CCC, DDD])` for a search on "PLACE". Wait for `.card`, then assert `.filter-row` is present with exactly 4 `.filter-chip`s in order A/B/C/Pending (text content `A`/`B`/`C`/`Pending`), all `aria-pressed="false"`. Click the A chip → assert exactly 1 visible card (`BBB PLACE`) and `#status` includes `1 of 4 shown`. Click the Pending chip too (additive) → assert 2 visible cards (`BBB PLACE`+`DDD PLACE`) and `#status` includes `2 of 4 shown`. Click both chips again to deselect → assert all 4 cards visible and `#status` reads the plain `4 match(es) · official data` (no `shown` suffix). To check composition with sort, `page.selectOption('#sort-select', 'grade-asc')` then click the C chip → assert exactly 1 visible card (`AAA PLACE`). Test 70b: a separate search returning two same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would do nothing) while `.sort-row` is still present.
@@ -1269,7 +1306,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.37.0**
+Current: **v1.39.0**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1329,6 +1366,8 @@ Notable versions:
 - v1.36.0 — multi-result grade filter: complements the v1.35.0 sort control with a `.filter-row` of `.filter-chip` toggle buttons (A/B/C/Pending, one per grade category actually present) shown whenever `render()` has more than one group spanning 2+ categories. Clicking a chip toggles its category in/out of the module-level `activeFilters` Set (multi-select), updates `aria-pressed`, and calls `updateCardsWrap()` — which filters `currentGroups` via `visibleGroups()`, re-sorts via the existing `sortGroups(visible, currentSortMode)` so the filter composes with whatever sort is active, replaces only `#cards-wrap`, and appends ` · N of M shown` to the status line (or restores the plain status when unfiltered). `render()` resets `activeFilters`/`currentSortMode` on every new search; `.filter-row` is omitted entirely for a single result or when all results share one category. Pure client-side re-filtering of already-fetched rows; no new request. Tests 70–70b added (71 cases, 334 assertions)
 - v1.36.1 — `getJSON`'s three-tier failover (primary → data.ny.gov mirror → corsproxy.io) now wraps every tier in `timeoutFetch` with a 10s bound (`GETJSON_TIMEOUT_MS`), reusing the helper already used by resolvers/geocoders; `loadViolCodes`' `fetch(VIOL_CSV)` (awaited at the top of `search()`, ahead of the getJSON calls) was bounded in the same pass. Previously each used a bare `fetch()` with no timeout, so an unresponsive (not just erroring) host could leave the UI stuck on "Looking up…" for the browser's default timeout — observed live during a Tyler Technologies/Socrata outage where both the primary and the data.ny.gov mirror (also Tyler-hosted) hung. Bounding each tier makes a fully-dead backend fail over and surface its error within ~30s worst case instead of hanging indefinitely. Note this makes the app fail *fast*, not *succeed* — all three tiers are Tyler-hosted Socrata, so a platform-wide outage has no client-side data failover (a localStorage stale-cache is the candidate next step). Test 71 added (72 cases, 336 assertions)
 - v1.37.0 — offline result cache: a successful `search()` now stores its matched rows in `localStorage` under `grade-cache` (keyed on the normalized name+loc, deduped, capped at `CACHE_MAX`=25, most-recent-first). When **every** `getJSON` tier fails — the platform-wide Socrata/Tyler outage that v1.36.1 made fail *fast* but couldn't make *succeed* — `search()`'s catch serves the last-known result for that query via `renderFromCache` instead of the bare error: a `.cache-banner` caution strip (orange `var(--C)` tint, not closure-red) plus a ` · cached {date}` status note, reusing `render()` so all card features still work. Writes degrade silently on a quota error; a fresh success overwrites the stale copy. Pure client-side, no new network dependency — composes with the existing `#recent`/`favorites` lists. The motivating research was this session's live-outage investigation (all three tiers are Tyler-hosted, so there's no fresh-data failover; a stale cache is the only no-infra way to still show something). Test 72 added (73 cases, 342 assertions)
+- v1.38.0 — the v1.33.0 "🔗 Copy link to this search" button now hands off to the native **Web Share API** (`navigator.share`) on supported devices (mobile Safari/Chrome) instead of always copying to the clipboard — the share sheet (Messages, Mail, AirDrop, etc.) is a superset of "copy a link". The button gains a `data-title` (the restaurant name for a single result, the search term for multiple) alongside its existing `data-url`. A user-cancelled share (`AbortError`) leaves the button untouched; any other failure, or no `navigator.share` (desktop, the test harness), falls through to the unchanged `navigator.clipboard.writeText` copy path. Pure client-side, no new dependency. Tests 73–73b added (75 cases, 349 assertions)
+- v1.39.0 — cuisine comparison: mirrors the v1.31.0 borough comparison but scoped to `cuisine_description` (already fetched, previously only shown as plain text in `.meta`). Each card with a cuisine type gains a second opt-in "How do {Cuisine} restaurants compare?" panel (`cuisineCompareHtml`) that, on first open, runs the same citywide `$group=grade` aggregate scoped via `upper(cuisine_description)='JAPANESE'` (`loadCuisineGradeDist`, cached per cuisine in `cuisineDistCache`) and shows "About N in 100 graded {Cuisine} restaurants citywide are A. This one is graded X — in the majority/minority." Deferred to a user toggle via a second capturing `toggle` listener on `#results`, so a plain search makes no extra request; degrades to "Couldn't load cuisine comparison." on failure. Tests 74–74b added (77 cases, 358 assertions)
 
 ## Known-good Maps parsing baseline
 

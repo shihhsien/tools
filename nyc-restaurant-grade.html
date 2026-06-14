@@ -181,6 +181,13 @@
   .boro-compare summary::before { content: '\25B8  '; }
   .boro-compare[open] summary::before { content: '\25BE  '; }
   .boro-compare-body { font-size: 12px; color: var(--text); line-height: 1.45; margin-top: 6px; }
+  /* === Cuisine comparison (opt-in, fetched on open) === */
+  .cuisine-compare { margin-top: 8px; }
+  .cuisine-compare summary { font-size: 12px; color: var(--muted); cursor: pointer; list-style: none; padding: 2px 0; user-select: none; }
+  .cuisine-compare summary::-webkit-details-marker { display: none; }
+  .cuisine-compare summary::before { content: '\25B8  '; }
+  .cuisine-compare[open] summary::before { content: '\25BE  '; }
+  .cuisine-compare-body { font-size: 12px; color: var(--text); line-height: 1.45; margin-top: 6px; }
   /* === Grade context (plain-English meaning under the grade line) === */
   .grade-ctx { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
   /* === History === */
@@ -260,7 +267,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.37.0</div>
+<div class="ver">v1.39.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -521,6 +528,29 @@ function loadBoroGradeDist(boro) {
   return boroDistCache[key];
 }
 
+// Per-cuisine grade distribution — same aggregate query scoped to one cuisine type,
+// fetched lazily the first time a card's "How does {cuisine} compare?" panel is
+// opened (so it adds no request to a plain search). Cached per cuisine; best-effort
+// (null on failure).
+const cuisineDistCache = {};
+function loadCuisineGradeDist(cuisine) {
+  const key = String(cuisine || '').toUpperCase().trim();
+  if (!key) return Promise.resolve(null);
+  if (!cuisineDistCache[key]) cuisineDistCache[key] = (async () => {
+    try {
+      const where = `upper(cuisine_description)='${key.replace(/'/g, "''")}' and grade in ('A','B','C')`;
+      const url = `${API}?$select=` + encodeURIComponent('grade,count(*) as n')
+        + '&$where=' + encodeURIComponent(where) + '&$group=grade';
+      const rows = await getJSON(url);
+      const counts = { A: 0, B: 0, C: 0 };
+      for (const r of rows) { const g = String(r.grade || '').toUpperCase(); if (g in counts) counts[g] = Number(r.n) || 0; }
+      const total = counts.A + counts.B + counts.C;
+      return total ? { ...counts, total } : null;
+    } catch { return null; }
+  })();
+  return cuisineDistCache[key];
+}
+
 // ---- Rendering --------------------------------------------------------
 // One restaurant has many inspection rows. Collapse them by camis, keeping
 // the latest inspection and the most recent letter grade separately.
@@ -715,6 +745,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + lastCriticalHtml(lastCritical, latest.inspection_date)
     + historyHtml(history)
     + boroCompareHtml(info.boro, grade)
+    + cuisineCompareHtml(info.cuisine_description, grade)
     + '</div>';
 }
 
@@ -727,6 +758,17 @@ function boroCompareHtml(boro, grade) {
   return '<details class="boro-compare" data-boro="' + htmlEsc(boro) + '" data-grade="' + htmlEsc(grade || '') + '">'
     + '<summary>How does ' + htmlEsc(boro) + ' compare?</summary>'
     + '<div class="boro-compare-body">Loading…</div></details>';
+}
+
+// Opt-in cuisine comparison: same pattern as boroCompareHtml, but scoped to
+// cuisine_description (loadCuisineGradeDist) — "How do Japanese restaurants
+// compare?" Fetch deferred to first open via the same capturing #results
+// toggle listener.
+function cuisineCompareHtml(cuisine, grade) {
+  if (!cuisine) return '';
+  return '<details class="cuisine-compare" data-cuisine="' + htmlEsc(cuisine) + '" data-grade="' + htmlEsc(grade || '') + '">'
+    + '<summary>How do ' + htmlEsc(cuisine) + ' restaurants compare?</summary>'
+    + '<div class="cuisine-compare-body">Loading…</div></details>';
 }
 
 // Grade placard — the iconic NYC DOHMH window card, shown as hero for a single result.
@@ -890,7 +932,10 @@ function render(rows, name, originalName, addressHint) {
   const shareLoc = locInput.value.trim();
   if (shareLoc) shareParams.set('loc', shareLoc);
   const shareUrl = `${location.origin}${location.pathname}?${shareParams}`;
-  const copyBtn = `<button class="copy-link" data-url="${htmlEsc(shareUrl)}">&#128279; Copy link to this search</button>`;
+  const shareTitle = groups.length === 1
+    ? `${groups[0].info.dba} grade — NYC Restaurant Grade`
+    : `${name} — NYC Restaurant Grade`;
+  const copyBtn = `<button class="copy-link" data-url="${htmlEsc(shareUrl)}" data-title="${htmlEsc(shareTitle)}">&#128279; Copy link to this search</button>`;
   resultsEl.innerHTML = copyBtn + sortControl + filterControl + hero + '<div id="cards-wrap">' + groups.map(cardHtml).join('') + '</div>';
   return groups.length;
 }
@@ -942,6 +987,18 @@ resultsEl.addEventListener('click', async e => {
   const copyBtn = e.target.closest('.copy-link');
   if (!copyBtn) return;
   const original = copyBtn.textContent;
+  // On share-capable devices (mobile), hand off to the native share sheet
+  // instead of the clipboard — a superset of "copy" (Messages, Mail, etc.).
+  // A user-cancelled share (AbortError) is not a failure: leave the button text
+  // alone. Any other share failure (or no Web Share API) falls back to copy.
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: copyBtn.dataset.title, url: copyBtn.dataset.url });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+  }
   try {
     await navigator.clipboard.writeText(copyBtn.dataset.url);
     copyBtn.textContent = '✓ Link copied';
@@ -1478,6 +1535,19 @@ resultsEl.addEventListener('toggle', async e => {
   const g = d.dataset.grade;
   const thisIs = g === 'A' ? 'graded A — in the majority' : g ? 'graded ' + g + ' — in the minority' : 'not currently graded';
   body.textContent = `About ${pct} in 100 graded ${d.dataset.boro} restaurants are A. This one is ${thisIs}.`;
+}, true);
+// Same pattern for the per-cuisine comparison panel.
+resultsEl.addEventListener('toggle', async e => {
+  const d = e.target;
+  if (!(d instanceof HTMLElement) || !d.classList.contains('cuisine-compare') || !d.open || d.dataset.loaded) return;
+  d.dataset.loaded = '1';
+  const body = d.querySelector('.cuisine-compare-body');
+  const dist = await loadCuisineGradeDist(d.dataset.cuisine);
+  if (!dist) { body.textContent = "Couldn't load cuisine comparison."; return; }
+  const pct = Math.round(dist.A / dist.total * 100);
+  const g = d.dataset.grade;
+  const thisIs = g === 'A' ? 'graded A — in the majority' : g ? 'graded ' + g + ' — in the minority' : 'not currently graded';
+  body.textContent = `About ${pct} in 100 graded ${d.dataset.cuisine} restaurants citywide are A. This one is ${thisIs}.`;
 }, true);
 [nameInput, locInput].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') search(); }));
 mapsInput.addEventListener('input', onMapsLink);
