@@ -153,6 +153,14 @@
   .trend-up { color: var(--B); }
   .trend-down { color: var(--C); }
   .trend-flat { color: var(--muted); }
+  /* === Score-history sparkline === */
+  .sparkline-wrap { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
+  .spark-bar { width: 8px; border-radius: 2px 2px 0 0; }
+  .spark-A { background: var(--A); }
+  .spark-B { background: var(--B); }
+  .spark-C { background: var(--C); }
+  .sparkline-label { font-size: 10px; color: var(--muted); }
   /* === Inspection freshness (in .meta) === */
   .freshness-overdue { color: var(--C); font-weight: 600; }
   /* === Violations === */
@@ -267,7 +275,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.39.0</div>
+<div class="ver">v1.40.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -664,6 +672,30 @@ function trendHtml(history) {
   return '<div class="trend ' + cls + '"><span class="trend-arrow">' + arrow + '</span> ' + label + ptsLabel + ' since previous inspection</div>';
 }
 
+// Compact score-history sparkline: one bar per inspection across the (≤6) history
+// window, oldest-left to newest-right, height ∝ score (taller = worse, matching
+// scoreBarHtml's fill semantics) and color-banded by the score's implied grade
+// (≤13 A / ≤27 B / 28+ C). Surfaces the score trajectory at a glance without
+// expanding the history timeline; pure client-side from already-fetched rows.
+// Needs ≥2 numeric scores to be meaningful (same guard spirit as trend/history).
+function sparklineHtml(history) {
+  if (!history || history.length < 2) return '';
+  const pts = history
+    .map(r => ({ score: parseInt(r.score), date: r.inspection_date }))
+    .filter(p => !isNaN(p.score))
+    .reverse(); // oldest-first for a left-to-right time axis
+  if (pts.length < 2) return '';
+  const cap = Math.max(28, ...pts.map(p => p.score));
+  const bars = pts.map(p => {
+    const h = Math.max(8, Math.round(p.score / cap * 100));
+    const band = p.score <= 13 ? 'A' : p.score <= 27 ? 'B' : 'C';
+    return '<span class="spark-bar spark-' + band + '" style="height:' + h + '%" title="'
+      + fmtDate(p.date) + ': score ' + p.score + '"></span>';
+  }).join('');
+  return '<div class="sparkline-wrap"><div class="sparkline">' + bars + '</div>'
+    + '<span class="sparkline-label">score history \xb7 lower is better</span></div>';
+}
+
 function historyHtml(history) {
   if (!history || history.length < 2) return '';
   const rows = history.map(r => {
@@ -739,6 +771,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + ctx
     + scoreBar
     + trendHtml(history)
+    + sparklineHtml(history)
     + gradeConsistencyHtml(history)
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
     + violationsHtml(violations)

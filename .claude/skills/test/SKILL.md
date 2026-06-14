@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 77 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 79 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 77-case Playwright test suite, fix any failures, and confirm 356/356 assertions pass.
+Run the full 79-case Playwright test suite, fix any failures, and confirm 363/363 assertions pass.
 
 ## Setup
 
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `356 tests: 356 passed, 0 failed`
+Expected output ends with: `363 tests: 363 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -614,6 +614,22 @@ mock the same way as test 61/65.
   `Couldn't load`.
 
 Only fires on a user toggle, so no other test is affected.
+
+### Score-history sparkline (tests 75/75b, v1.40.0)
+Plain DOHMH search (`#q`+`#go`), single `43nn-pn8j` mock returning multi-row fixtures that share
+one `camis` so `groupByRestaurant` folds them into one restaurant's `history`.
+- **Test 75:** three rows, distinct `inspection_date`s, scores `5`/`18`/`30` (grades A/B/C). After
+  `.card`: assert `.sparkline` present, `.spark-bar` count `=== 3`, oldest-first order (read each
+  bar's band class via `p.$$eval('.spark-bar', els => els.map(e => [...e.classList].find(c =>
+  c.startsWith('spark-') && c !== 'spark-bar')))` — index 0 is `spark-C` for the score-30 oldest
+  inspection, index 2 is `spark-A` for the score-5 newest), and `.sparkline-label` text includes
+  `lower is better`. Bars are colour-banded by the *score's implied grade* (`≤13` A / `≤27` B /
+  `28+` C), and ordered via `history.reverse()` (history is newest-first).
+- **Test 75b:** a single inspection (`J([MAZZAT])`) → assert `.sparkline` is absent
+  (`sparklineHtml` needs ≥2 numeric scores).
+
+Adds no network calls; existing multi-inspection card tests (36/54/64) gain a sibling `.sparkline`
+but assert against unrelated selectors, so they're unaffected.
 
 ### Offline result cache (test 72, v1.37.0)
 One `T()` runs two phases on the same page so `localStorage` persists across them.
