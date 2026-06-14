@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 69 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 71 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 69-case Playwright test suite, fix any failures, and confirm 317/317 assertions pass.
+Run the full 71-case Playwright test suite, fix any failures, and confirm 334/334 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 67 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 71 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `317 tests: 317 passed, 0 failed`
+Expected output ends with: `334 tests: 334 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -562,6 +562,20 @@ Three fixtures sharing a `dba` substring but distinct full names — `AAA PLACE`
 `page.selectOption('#sort-select', 'grade-asc')` → assert order `[BBB, CCC, AAA]` (A, B, C).
 `page.selectOption('#sort-select', 'name')` → assert order `[AAA, BBB, CCC]` (alphabetical).
 Then a separate single-result search (`J([MAZZAT])`) asserts `.sort-row` is absent.
+
+### Multi-result grade filter (tests 70/70b, v1.36.0)
+Reuse test 69's `AAA PLACE` (grade C), `BBB PLACE` (grade A), `CCC PLACE` (grade B) fixtures, plus
+a new `DDD PLACE` (no grade — Pending), mocked via `J([AAA, BBB, CCC, DDD])` for a search on
+"PLACE". Wait for `.card`, then assert `.filter-row` is present with exactly 4 `.filter-chip`s in
+order A/B/C/Pending (`textContent` `A`/`B`/`C`/`Pending`), all `aria-pressed="false"`. Click the A
+chip → assert exactly 1 visible card (`BBB PLACE`) and `#status` includes `1 of 4 shown`. Click the
+Pending chip too (additive, multi-select) → assert 2 visible cards (`BBB PLACE`+`DDD PLACE`) and
+`#status` includes `2 of 4 shown`. Click both chips again to deselect → assert all 4 cards visible
+and `#status` reads the plain `4 match(es) · official data` (no `shown` suffix). To check
+composition with sort: `page.selectOption('#sort-select', 'grade-asc')` then click the C chip →
+assert exactly 1 visible card (`AAA PLACE`). **Test 70b:** a separate search returning two
+same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would
+do nothing) while `.sort-row` is still present.
 
 **General fix-notes from the v1.35.0 test-suite rewrite** (the app code needed zero changes —
 all fixes were in `test.mjs`; useful if rewriting the harness from scratch again):

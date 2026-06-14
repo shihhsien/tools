@@ -72,6 +72,10 @@
   /* === Multi-result sort control === */
   .sort-row { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
   .sort-row select { font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  /* === Multi-result grade filter === */
+  .filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+  .filter-chip { width: auto; margin-top: 0; font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
+  .filter-chip[aria-pressed="true"] { background: var(--A); border-color: var(--A); color: #fff; }
   button { width: 100%; margin-top: 10px; padding: 15px 18px; font-size: 17px; font-weight: 600; border: none; border-radius: 12px; background: #fff; color: #000; cursor: pointer; transition: opacity .12s ease; }
   button:active { opacity: .7; }
   button:disabled { opacity: .45; cursor: default; }
@@ -254,7 +258,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.35.0</div>
+<div class="ver">v1.36.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -802,6 +806,49 @@ function sortControlHtml(groups) {
     + '</select></div>';
 }
 
+// Multi-result grade filter. `filterCategory` buckets a group the same way
+// `.grade`/`.placard` chips do (gradeClass: A/B/C/other), with "other" shown
+// as "Pending". `activeFilters` is a Set of categories to show — empty means
+// show all. `currentSortMode` mirrors the sort-select so a filter toggle
+// re-applies the user's chosen order.
+let activeFilters = new Set();
+let currentSortMode = 'default';
+let baseStatusText = '';
+
+const FILTER_LABELS = { A: 'A', B: 'B', C: 'C', other: 'Pending' };
+
+function filterCategory(g) {
+  return gradeClass(g.graded?.grade ?? null);
+}
+
+function filterControlHtml(groups) {
+  const present = ['A', 'B', 'C', 'other'].filter(cat => groups.some(g => filterCategory(g) === cat));
+  if (present.length < 2) return '';
+  const chips = present.map(cat =>
+    '<button type="button" class="filter-chip" data-cat="' + cat + '" aria-pressed="false">'
+    + htmlEsc(FILTER_LABELS[cat]) + '</button>');
+  return '<div class="filter-row"><span>Filter</span>' + chips.join('') + '</div>';
+}
+
+function visibleGroups(groups) {
+  return activeFilters.size ? groups.filter(g => activeFilters.has(filterCategory(g))) : groups;
+}
+
+// Re-renders #cards-wrap from `currentGroups` applying both the active grade
+// filter and the chosen sort, and updates the status line with a "N of M
+// shown" note when the filter narrows the list. Shared by the sort-select
+// change handler and the filter-chip click handler so either control can
+// follow the other's state.
+function updateCardsWrap() {
+  const wrap = resultsEl.querySelector('#cards-wrap');
+  if (!wrap) return;
+  const visible = visibleGroups(currentGroups);
+  wrap.innerHTML = sortGroups(visible, currentSortMode).map(cardHtml).join('');
+  setStatus(visible.length < currentGroups.length
+    ? `${baseStatusText} · ${visible.length} of ${currentGroups.length} shown`
+    : baseStatusText);
+}
+
 // Returns the number of restaurants rendered (0 on no results), so callers
 // like onShare can fall back to URL resolution when a name search finds nothing.
 // `addressHint`, when given, narrows multiple same-name matches down to the one
@@ -822,31 +869,44 @@ function render(rows, name, originalName, addressHint) {
       note = ' · matched by address';
     }
   }
-  setStatus(`${groups.length} match(es) · official data${note}`);
+  baseStatusText = `${groups.length} match(es) · official data${note}`;
+  setStatus(baseStatusText);
   currentGroups = groups;
+  activeFilters = new Set();
+  currentSortMode = 'default';
   const hero = groups.length === 1 ? placardHtml(groups[0].graded?.grade ?? null) : '';
   const sortControl = groups.length > 1 ? sortControlHtml(groups) : '';
+  const filterControl = groups.length > 1 ? filterControlHtml(groups) : '';
   const shareParams = new URLSearchParams({ q: name });
   const shareLoc = locInput.value.trim();
   if (shareLoc) shareParams.set('loc', shareLoc);
   const shareUrl = `${location.origin}${location.pathname}?${shareParams}`;
   const copyBtn = `<button class="copy-link" data-url="${htmlEsc(shareUrl)}">&#128279; Copy link to this search</button>`;
-  resultsEl.innerHTML = copyBtn + sortControl + hero + '<div id="cards-wrap">' + groups.map(cardHtml).join('') + '</div>';
+  resultsEl.innerHTML = copyBtn + sortControl + filterControl + hero + '<div id="cards-wrap">' + groups.map(cardHtml).join('') + '</div>';
   return groups.length;
 }
 
-// Delegated — re-orders the last-rendered groups and replaces only #cards-wrap,
-// leaving the sort control's own selection and the copy-link/hero untouched.
+// Delegated — re-orders/-filters the last-rendered groups and replaces only
+// #cards-wrap, leaving the sort/filter controls' own state and the
+// copy-link/hero untouched.
 resultsEl.addEventListener('change', e => {
   if (e.target.id !== 'sort-select') return;
-  const wrap = resultsEl.querySelector('#cards-wrap');
-  if (!wrap) return;
-  wrap.innerHTML = sortGroups(currentGroups, e.target.value).map(cardHtml).join('');
+  currentSortMode = e.target.value;
+  updateCardsWrap();
 });
 
 // Delegated — #results is replaced wholesale by render(), so a static listener
 // on the container catches clicks on any (re)rendered .copy-link button.
 resultsEl.addEventListener('click', async e => {
+  const filterChip = e.target.closest('.filter-chip');
+  if (filterChip) {
+    const cat = filterChip.dataset.cat;
+    const active = activeFilters.has(cat);
+    if (active) activeFilters.delete(cat); else activeFilters.add(cat);
+    filterChip.setAttribute('aria-pressed', String(!active));
+    updateCardsWrap();
+    return;
+  }
   const favBtn = e.target.closest('.fav-toggle');
   if (favBtn) {
     const fav = toggleFavorite(favBtn.dataset.name, favBtn.dataset.loc);
