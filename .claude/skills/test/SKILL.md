@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 71 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 72 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 71-case Playwright test suite, fix any failures, and confirm 334/334 assertions pass.
+Run the full 72-case Playwright test suite, fix any failures, and confirm 336/336 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 71 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 72 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `334 tests: 334 passed, 0 failed`
+Expected output ends with: `336 tests: 336 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -576,6 +576,15 @@ composition with sort: `page.selectOption('#sort-select', 'grade-asc')` then cli
 assert exactly 1 visible card (`AAA PLACE`). **Test 70b:** a separate search returning two
 same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would
 do nothing) while `.sort-row` is still present.
+
+### getJSON timeout fallback (test 71, v1.36.1)
+`getJSON` now wraps every failover tier in `timeoutFetch(url, undefined, GETJSON_TIMEOUT_MS)`
+(10s). Plain DOHMH search (`#q` fill + `#go`). Mock `data.cityofnewyork.us` with a route handler
+that intentionally does nothing — no `r.fulfill()`/`r.abort()`/`r.continue()` — to simulate a host
+that accepts the connection but never responds. Mock `data.ny.gov` → `J([MAZZAT])`.
+`waitForSelector('.card', { timeout: 15000 })` must resolve comfortably under 15s: the 10s abort
+on the primary fires, then the mirror responds immediately. If this hangs to the full 15s timeout,
+`getJSON`'s primary-tier fetch is back to a bare `fetch()` (no `timeoutFetch` wrapper).
 
 **General fix-notes from the v1.35.0 test-suite rewrite** (the app code needed zero changes —
 all fixes were in `test.mjs`; useful if rewriting the harness from scratch again):

@@ -55,7 +55,7 @@ your head or only in the chat.
 - `.githooks/check-consistency.sh` — enforces three invariants (see below)
 - `.githooks/pre-push` — runs the consistency check before every push
 - `.claude/settings.json` — runs the consistency check at every SessionStart
-- `.claude/skills/test/` — Playwright test skill (71 cases, 334 assertions)
+- `.claude/skills/test/` — Playwright test skill (72 cases, 336 assertions)
 - `.claude/skills/verify/` — visual screenshot verification skill
 - `.claude/skills/nyc-restaurant-grade-design/` — design system skill v2 (tokens incl. fonts/interaction, components, UI kit, templates)
 
@@ -124,6 +124,34 @@ prefix) are host-swapped to the mirror — resolver and CSV fetches don't go
 through `getJSON`. The mirror id is **deploy-verify** (the sandbox can't confirm
 data.ny.gov hosts `43nn-pn8j`); if it 404s, `getJSON` falls through to the proxy,
 so there's no regression even if the hypothesis is wrong.
+
+Every tier of `getJSON` is wrapped in `timeoutFetch` with a 10s bound
+(`GETJSON_TIMEOUT_MS`, v1.36.1) — previously each tier used a bare `fetch()`
+with no timeout, so a host that accepts the connection but never responds (as
+opposed to one that errors immediately) could leave the UI stuck on "Looking
+up…" for the browser's default timeout (60s+) per tier, up to several minutes
+across all three. A real Tyler Technologies/Socrata outage observed in the
+field showed exactly this shape (primary and mirror both unresponsive, since
+both are Tyler-hosted Socrata instances). Bounding each tier means a fully-dead
+backend now fails over and surfaces the error within ~30s worst case instead of
+hanging indefinitely. `timeoutFetch` already existed for resolver/geocoder
+calls (v1.12.3) — this reuses it, no new dependency. **`loadViolCodes` was
+bounded in the same pass** (also v1.36.1): `search()` `await`s it before its
+first `getJSON` call, so its previously-unbounded `fetch(VIOL_CSV)` to
+`raw.githubusercontent.com` could hang the whole search *ahead of* the getJSON
+timeouts; it now uses `timeoutFetch(VIOL_CSV, undefined, GETJSON_TIMEOUT_MS)`
+and still degrades to `{}` on timeout.
+
+**Resilience boundary (important):** all three `getJSON` tiers ultimately depend
+on Tyler-hosted Socrata infrastructure — primary (`data.cityofnewyork.us`) and
+mirror (`data.ny.gov`) are *both* Tyler instances, and the `corsproxy.io` tier
+relays the *primary* URL — so a platform-wide Tyler outage takes out all three
+at once. The v1.36.1 timeout work makes the app fail **fast and gracefully**, it
+does **not** make data **available** during such an outage; no client-side
+failover can, because there is no live non-Socrata copy of `43nn-pn8j`. The only
+client-side way to serve data during a full outage is a **localStorage
+response cache** (serve last-known results stale-with-banner) — a candidate next
+iteration, not yet built.
 
 ### Maps link resolution
 
@@ -977,7 +1005,7 @@ await page.goto(BASE, { waitUntil: 'load' });
 
 Mock network responses with `route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })`.
 
-**Required test cases (71 cases, 334 assertions — all must pass):**
+**Required test cases (72 cases, 336 assertions — all must pass):**
 
 | # | What | Key assertion |
 |---|------|---------------|
@@ -1069,6 +1097,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 | 69 | Multi-result sort (v1.35.0) | 3-result search shows `.sort-row`/`#sort-select` with `default`/`grade-asc`/`grade-desc`/`name` options (no `distance`, no `dist` data); default order is fetch order; `grade-asc` re-orders best-grade-first; `name` re-orders A-Z; single-result search has no `.sort-row` |
 | 70 | Multi-result grade filter (v1.36.0) | 4-result search (grades C/A/B/Pending) shows `.filter-row` with exactly 4 `.filter-chip`s in order A/B/C/Pending, all `aria-pressed="false"`; clicking the A chip shows only the A result and status reads "1 of 4 shown"; additively clicking the Pending chip shows A+Pending (2 of 4 shown); deselecting both restores all 4 and the plain status text; composes with `#sort-select` (grade-asc + C filter shows only the C result) |
 | 70b | Same-grade multi-result has no filter row | 2-result search where both results are grade A → `.filter-row` absent (filtering would do nothing), `.sort-row` still present |
+| 71 | getJSON timeout fallback (v1.36.1) | primary host never responds (route hangs, no `fulfill`/`abort`); mirror returns `J([MAZZAT])`; card renders within 15s, proving `GETJSON_TIMEOUT_MS` (10s) aborts the hung primary and falls through to the mirror instead of hanging indefinitely |
 
 **Mocking notes:**
 - `E = { status: 503, ct: 'text/plain', body: 'error' }` for resolver failures
@@ -1117,6 +1146,7 @@ Mock network responses with `route.fulfill({ status: 200, contentType: 'applicat
 - For the borough-comparison tests (tests 65/65b, v1.31.0): the boro query also carries `$group=grade` (so split the `43nn-pn8j` mock the same way as test 61). Test 65: function handler — `u.includes('group=grade')` sets `boroHit=true`, captures `boroUrl`, returns `J([{grade:'A',n:'880'},{grade:'B',n:'90'},{grade:'C',n:'30'}])`; otherwise count `searchCalls` and return `J([MAZZAT])` (MAZZAT's boro is Brooklyn). After a plain search assert `.boro-compare` present, `!boroHit && searchCalls===1` (deferred), and the summary names the borough. Click `.boro-compare summary`, `waitForFunction` until `.boro-compare-body` no longer contains "Loading", then assert `boroHit`, `decodeURIComponent(boroUrl)` includes `upper(boro)='BROOKLYN'`, and the body includes `88 in 100` + `majority` (880/1000 → 88%). Test 65b: make the boro query and the `data.ny.gov`/`corsproxy.io` failover all return 500 → assert the body includes `Couldn't load`. **Note:** like the v1.29.0 dist query, this only fires on a user toggle, so no other test is affected.
 - For the live grade-distribution tests (tests 61/61b, v1.29.0): the dist query hits the same `43nn-pn8j` host but is uniquely identifiable by `$group=grade` (which survives as the literal substring `group=grade` because only the `$select`/`$where` are `encodeURIComponent`-wrapped). Test 61: mock `43nn-pn8j` with a function handler that, when `u.includes('group=grade')`, sets `distHit=true` and returns `J([{grade:'A',n:'910'},{grade:'B',n:'70'},{grade:'C',n:'20'}])`, else returns `J([MAZZAT])`. After load assert `#a-rate` text === `9 in 10` and `!distHit` (lazy — not fired on load). Click `#about > summary`, `waitForFunction` until `#a-rate` text !== `9 in 10`, then assert `distHit` and `#a-rate` === `91 in 100` (910/1000 → 91%). Test 61b: same split handler but count non-dist `43nn-pn8j` calls in `searchCalls`; do a plain `#q`+`#go` search and assert `!distHit` (never fires for a search) and `searchCalls === 1` (the dist query adds no search-path request). **Note:** because the dist query only fires on `#about` open, no other test that counts `43nn-pn8j` calls is affected — they never open the panel.
 - For the getJSON failover tests (tests 60/60b/60c, v1.28.0): plain DOHMH search (`#q` fill + `#go`), but route the three hosts separately with hit-flags declared outside `setup`/`fn`. Test 60: `data.cityofnewyork.us` → HTTP 500, `data.ny.gov` (flag `mirrorHit`) → `J([MAZZAT])`, `corsproxy.io` (flag `proxyHit`) → also serves it; assert `mirrorHit && !proxyHit` (the official mirror is preferred over the proxy) and the card renders. Test 60b: `data.cityofnewyork.us` → 500, `data.ny.gov` → 404, `corsproxy.io` (flag) → `J([MAZZAT])`; assert `proxyHit` and the card renders (proxy is the last resort). Test 60c: `data.cityofnewyork.us` → `J([MAZZAT])`, mirror/proxy handlers set flags then `r.abort()`; assert neither was hit (primary success short-circuits — no regression). Note the mirror swap only fires for URLs with the `API` prefix, so the violation CSV and resolver fetches are unaffected.
+- For the getJSON timeout-fallback test (test 71, v1.36.1): plain DOHMH search (`#q` fill + `#go`). Mock `data.cityofnewyork.us` with a route handler that does nothing — never calls `r.fulfill()`/`r.abort()`/`r.continue()` — simulating a host that accepts the connection but never responds. Mock `data.ny.gov` → `J([MAZZAT])`. `waitForSelector('.card', { timeout: 15000 })` — must resolve well under 15s since `GETJSON_TIMEOUT_MS` (10s) aborts the hung primary fetch and falls through to the mirror. If this test times out, `getJSON`'s primary-tier `fetch()` is missing its `timeoutFetch` wrapper (back to a bare `fetch()` that hangs forever on an unresponsive route).
 - For the status re-announce test (test 59, v1.27.1): no mocks needed for the search path — exercise the empty-input guard, which calls `setStatus` directly with no intervening status change (a successful search interleaves a "Looking up…" status, so its result already differs from the prior text and re-announces naturally — the guard double-press is the genuine back-to-back-identical case). Build `ZWSP = String.fromCharCode(0x200B)` (don't type the literal char — Write/Edit can mangle invisible codepoints). Click `#go` with `#q` empty, assert `#status` text includes `Enter a restaurant name` and does NOT include `ZWSP`. Click `#go` again (still empty), assert the status now includes both `Enter a restaurant name` **and** `ZWSP` (the toggle appended it so the aria-live region re-announces). The substring checks elsewhere are unaffected because U+200B is invisible and `.includes()` on the visible text still matches.
 - For the multi-result sort test (test 69, v1.35.0): three fixtures sharing a query term but distinct `dba`s — `AAA PLACE` (grade C, score 30), `BBB PLACE` (grade A, score 3), `CCC PLACE` (grade B, score 15) — mocked via `J([AAA, BBB, CCC])` for a search on "PLACE" (all three match). None carry a `dist` field. Wait for `.card`, then assert `.sort-row` and `#sort-select` are present, and `#sort-select option` values are exactly `default`/`grade-asc`/`grade-desc`/`name` (no `distance` option, since no group has `dist`). Assert default `.name` order is `[AAA, BBB, CCC]` (fetch order). `page.selectOption('#sort-select', 'grade-asc')` → assert order `[BBB, CCC, AAA]` (A, B, C by `gradeRank`). `page.selectOption('#sort-select', 'name')` → assert order `[AAA, BBB, CCC]` (alphabetical). Then a separate plain single-result search (`J([MAZZAT])`) asserts `.sort-row` is absent (`groups.length === 1`).
 - For the multi-result grade filter tests (tests 70/70b, v1.36.0): reuse the test 69 `AAA PLACE` (grade C) / `BBB PLACE` (grade A) / `CCC PLACE` (grade B) fixtures plus a new `DDD PLACE` (no grade, i.e. Pending), mocked via `J([AAA, BBB, CCC, DDD])` for a search on "PLACE". Wait for `.card`, then assert `.filter-row` is present with exactly 4 `.filter-chip`s in order A/B/C/Pending (text content `A`/`B`/`C`/`Pending`), all `aria-pressed="false"`. Click the A chip → assert exactly 1 visible card (`BBB PLACE`) and `#status` includes `1 of 4 shown`. Click the Pending chip too (additive) → assert 2 visible cards (`BBB PLACE`+`DDD PLACE`) and `#status` includes `2 of 4 shown`. Click both chips again to deselect → assert all 4 cards visible and `#status` reads the plain `4 match(es) · official data` (no `shown` suffix). To check composition with sort, `page.selectOption('#sort-select', 'grade-asc')` then click the C chip → assert exactly 1 visible card (`AAA PLACE`). Test 70b: a separate search returning two same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would do nothing) while `.sort-row` is still present.
@@ -1210,7 +1240,7 @@ node -e "const h=require('fs').readFileSync('nyc-restaurant-grade.html','utf8');
 ## Versioning
 
 Bump the version string in the `.ver` footer div on every change.
-Current: **v1.36.0**
+Current: **v1.36.1**
 
 Notable versions:
 - v1.9.0 — major refactor for readability; organized into labelled sections
@@ -1268,6 +1298,7 @@ Notable versions:
 - v1.34.0 — favorites/pinned list: each card gains a `.fav-toggle` button ("☆ Save"/"★ Saved") in its `.meta` line, keyed on the restaurant's `dba`+`boro` (not the searched term, so individual chain locations pin separately); `toggleFavorite`/`isFavorite` persist `{name, loc}` pairs in `localStorage` under `favorites`, and `renderFavorites()` shows them as `.fav-chip` pills in a new `#favorites` row (mirroring the v1.23.0 `#recent` list, plus a "Clear favorites" button) — clicking a chip refills `#q`/`#loc` and re-searches. The existing v1.33.0 delegated `#results` click listener also handles `.fav-toggle` in place (no full re-render). Pure client-side, no new dependency. Test 68 added (68 cases, 314 assertions)
 - v1.35.0 — multi-result client-side sort: when `render()` has more than one group, a `.sort-row`/`<select id="sort-select">` (As found / Grade: best first / Grade: worst first / Name A-Z, plus Distance: nearest first when every group has a `dist`) lets the user re-order the cards without re-querying DOHMH. `render()` stashes `groups` in module-level `currentGroups` and wraps the cards in `#cards-wrap`; a delegated `change` listener on `#results` calls `sortGroups(currentGroups, mode)` and replaces only `#cards-wrap`. Single-result views omit `.sort-row` entirely. Pure client-side, no new dependency. Test 69 added (69 cases, 317 assertions)
 - v1.36.0 — multi-result grade filter: complements the v1.35.0 sort control with a `.filter-row` of `.filter-chip` toggle buttons (A/B/C/Pending, one per grade category actually present) shown whenever `render()` has more than one group spanning 2+ categories. Clicking a chip toggles its category in/out of the module-level `activeFilters` Set (multi-select), updates `aria-pressed`, and calls `updateCardsWrap()` — which filters `currentGroups` via `visibleGroups()`, re-sorts via the existing `sortGroups(visible, currentSortMode)` so the filter composes with whatever sort is active, replaces only `#cards-wrap`, and appends ` · N of M shown` to the status line (or restores the plain status when unfiltered). `render()` resets `activeFilters`/`currentSortMode` on every new search; `.filter-row` is omitted entirely for a single result or when all results share one category. Pure client-side re-filtering of already-fetched rows; no new request. Tests 70–70b added (71 cases, 334 assertions)
+- v1.36.1 — `getJSON`'s three-tier failover (primary → data.ny.gov mirror → corsproxy.io) now wraps every tier in `timeoutFetch` with a 10s bound (`GETJSON_TIMEOUT_MS`), reusing the helper already used by resolvers/geocoders; `loadViolCodes`' `fetch(VIOL_CSV)` (awaited at the top of `search()`, ahead of the getJSON calls) was bounded in the same pass. Previously each used a bare `fetch()` with no timeout, so an unresponsive (not just erroring) host could leave the UI stuck on "Looking up…" for the browser's default timeout — observed live during a Tyler Technologies/Socrata outage where both the primary and the data.ny.gov mirror (also Tyler-hosted) hung. Bounding each tier makes a fully-dead backend fail over and surface its error within ~30s worst case instead of hanging indefinitely. Note this makes the app fail *fast*, not *succeed* — all three tiers are Tyler-hosted Socrata, so a platform-wide outage has no client-side data failover (a localStorage stale-cache is the candidate next step). Test 71 added (72 cases, 336 assertions)
 
 ## Known-good Maps parsing baseline
 
