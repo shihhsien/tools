@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 72 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 73 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 72-case Playwright test suite, fix any failures, and confirm 336/336 assertions pass.
+Run the full 73-case Playwright test suite, fix any failures, and confirm 342/342 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 72 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 73 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `336 tests: 336 passed, 0 failed`
+Expected output ends with: `342 tests: 342 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -576,6 +576,18 @@ composition with sort: `page.selectOption('#sort-select', 'grade-asc')` then cli
 assert exactly 1 visible card (`AAA PLACE`). **Test 70b:** a separate search returning two
 same-grade-A fixtures (`EEE PLACE`/`FFF PLACE`) → assert `.filter-row` is absent (filtering would
 do nothing) while `.sort-row` is still present.
+
+### Offline result cache (test 72, v1.37.0)
+One `T()` runs two phases on the same page so `localStorage` persists across them.
+**Phase 1 (seed):** `setupRoute(p, [['43nn-pn8j', J([MAZZAT])]])`, fill `#q` MAZZAT, click `#go`,
+wait for `.card`, assert `.name === 'MAZZAT'` and `.cache-banner` is absent (`await p.$('.cache-banner')`
+is null — a live result isn't stale). **Phase 2 (outage):** `await p.unroute('**/*')`, then
+`setupRoute(p, [['43nn-pn8j', { status: 500, ct: 'text/plain', body: 'down' }]])` — the single
+`43nn-pn8j` substring matches the primary host, the `data.ny.gov` mirror, and the `corsproxy.io`
+proxy URL (all contain `43nn-pn8j`), so all three getJSON tiers 500. Re-fill `#q` MAZZAT, click
+`#go`, `waitForSelector('.cache-banner', { timeout: 15000 })`, then assert `.name === 'MAZZAT'`
+(served from cache), the banner text matches `/cached|unavailable/i`, and `#status` matches
+`/cached/i`. The cache key is the normalized name+loc, so phase 2 must reuse the same query string.
 
 ### getJSON timeout fallback (test 71, v1.36.1)
 `getJSON` now wraps every failover tier in `timeoutFetch(url, undefined, GETJSON_TIMEOUT_MS)`

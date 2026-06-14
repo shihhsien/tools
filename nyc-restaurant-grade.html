@@ -194,6 +194,8 @@
   .hist-closed { font-size: 11px; font-weight: 600; color: #f87171; }
   /* === Closure banner === */
   .closure-banner { margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.25); }
+  /* === Offline / cached-result banner (orange caution, not red — red is closures only) === */
+  .cache-banner { margin-bottom: 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px; line-height: 1.4; background: rgba(201,111,32,.12); color: var(--text); border: 1px solid var(--C); }
   /* === "How NYC grades work" explainer === */
   .about { margin-top: 18px; }
   .about summary { font-size: 13px; color: var(--muted); cursor: pointer; list-style: none; padding: 4px 0; user-select: none; }
@@ -258,7 +260,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.36.1</div>
+<div class="ver">v1.37.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -893,6 +895,22 @@ function render(rows, name, originalName, addressHint) {
   return groups.length;
 }
 
+// Re-render a cached entry (used when every live getJSON tier failed). Reuses
+// render() for all card features, then prepends a caution banner and notes the
+// staleness in the status line (appended to baseStatusText so it survives a
+// sort/filter re-render). Returns the rendered group count.
+function renderFromCache(entry) {
+  const count = render(entry.rows, entry.name, entry.original);
+  if (count > 0) {
+    const when = new Date(entry.ts).toLocaleDateString();
+    baseStatusText += ` \xb7 cached ${when}`;
+    setStatus(baseStatusText);
+    resultsEl.insertAdjacentHTML('afterbegin',
+      `<div class="cache-banner">⚠ NYC Open Data is unavailable right now — showing a cached result saved ${htmlEsc(when)}. Grades may be out of date.</div>`);
+  }
+  return count;
+}
+
 // Delegated — re-orders/-filters the last-rendered groups and replaces only
 // #cards-wrap, leaving the sort/filter controls' own state and the
 // copy-link/hero untouched.
@@ -946,6 +964,7 @@ async function search(addressHint) {
   violCodeMap = await loadViolCodes();   // cached after first call; degrades to {} on failure
 
   const words = originalDisplay.split(' ');
+  const ckey = cacheKeyFor(originalDisplay, locDisplay);
   let lastUrl = '';
   try {
     for (let len = words.length; len >= 1; len--) {
@@ -958,12 +977,21 @@ async function search(addressHint) {
       const groups = groupByRestaurant(rows);
       dbg(`search: got ${groups.length} result(s)`);
       if (groups.length > 0 || len === 1) {
-        const count = render(rows, displayName, len < words.length ? originalDisplay : null, addressHint);
-        if (count > 0) saveRecent(originalDisplay, locDisplay);
+        const original = len < words.length ? originalDisplay : null;
+        const count = render(rows, displayName, original, addressHint);
+        if (count > 0) {
+          saveRecent(originalDisplay, locDisplay);
+          saveCache(ckey, { rows, name: displayName, original });
+        }
         return count;
       }
     }
   } catch (e) {
+    // Every live tier failed. Fall back to a cached copy of this exact query if
+    // we have one, so an outage doesn't blank out a place the user looked up
+    // before; otherwise surface the error with a raw-data escape hatch.
+    const cached = findCache(ckey);
+    if (cached) { dbg('search: serving cached result'); return renderFromCache(cached); }
     setError(`Couldn't load (${htmlEsc(e.message)}). Open raw data directly: <a href="${lastUrl}" target="_blank">view JSON</a>`);
   } finally {
     btn.disabled = false;
@@ -1312,6 +1340,31 @@ async function onShare(raw) {
 }
 
 // ---- Recently searched ---------------------------------------------------
+// ---- Offline result cache ---------------------------------------------
+// Last-known good results, keyed by the user's query, so a place looked up
+// before still resolves when the DOHMH API is fully down (e.g. a platform-wide
+// Socrata/Tyler outage where every getJSON tier fails). Best-effort: a quota
+// error on write degrades silently, and a fresh search always overwrites the
+// stale copy. Capped + deduped on the query key, most-recent-first.
+const CACHE_KEY = 'grade-cache';
+const CACHE_MAX = 25;
+const cacheKeyFor = (name, loc) => name + '\x01' + loc;
+
+function loadCacheList() {
+  try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || []; } catch { return []; }
+}
+
+function saveCache(key, payload) {
+  let list = loadCacheList().filter(e => e.key !== key);
+  list.unshift({ key, ts: Date.now(), ...payload });
+  list = list.slice(0, CACHE_MAX);
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
+}
+
+function findCache(key) {
+  return loadCacheList().find(e => e.key === key) || null;
+}
+
 // Local-only history of successful searches, so the user can re-check a
 // place from before without retyping. Capped + deduped (case-insensitive
 // on name+loc), most-recent-first.
