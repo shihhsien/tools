@@ -182,6 +182,7 @@
   /* === History-derived insights (client-side, no extra network) === */
   .grade-consistency { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .critical-rate { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .reinspect { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .last-critical { font-size: 12px; color: var(--muted); margin-top: 8px; }
   /* === Borough comparison (opt-in, fetched on open) === */
   .boro-compare { margin-top: 8px; }
@@ -277,7 +278,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.44.0</div>
+<div class="ver">v1.45.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -620,6 +621,21 @@ function groupByRestaurant(rows) {
     // Distinct inspection dates with at least one Critical violation — used for the
     // "critical violations found at N of M recent inspections" rate below.
     g.criticalDates = new Set(crit.map(r => r.inspection_date));
+    // Re-inspection turnaround: pair the most recent "Re-inspection" date with the
+    // inspection date immediately before it, regardless of type.
+    const dateTypes = {};
+    for (const r of g.allRows) {
+      if (r.inspection_date && r.inspection_type && !dateTypes[r.inspection_date]) dateTypes[r.inspection_date] = r.inspection_type;
+    }
+    const sortedDates = Object.keys(dateTypes).sort();
+    g.reinspection = null;
+    for (let i = sortedDates.length - 1; i >= 1; i--) {
+      if (/re-inspection/i.test(dateTypes[sortedDates[i]])) {
+        const days = Math.round((new Date(sortedDates[i]) - new Date(sortedDates[i - 1])) / 86400000);
+        if (days >= 0) g.reinspection = { days, from: sortedDates[i - 1], to: sortedDates[i] };
+        break;
+      }
+    }
     const byDate = {};
     for (const r of g.allRows) {
       if (!r.inspection_date) continue;
@@ -770,12 +786,20 @@ function criticalRateHtml(history, criticalDates) {
   return '<div class="critical-rate">Critical violations found at ' + critCount + ' of ' + history.length + ' recent inspections</div>';
 }
 
+// "Re-inspected after N days" — turnaround time between an inspection and the
+// re-inspection that followed it, derived from the dates/types already fetched.
+function reinspectionHtml(reinspection) {
+  if (!reinspection) return '';
+  const n = reinspection.days;
+  return '<div class="reinspect">Re-inspected ' + n + ' day' + (n === 1 ? '' : 's') + ' after the previous inspection \xb7 ' + fmtDate(reinspection.from) + ' → ' + fmtDate(reinspection.to) + '</div>';
+}
+
 function closureBannerHtml(latestClosure, currentlyClosed) {
   if (!currentlyClosed || !latestClosure) return '';
   return '<div class="closure-banner">⚠ Closed by DOHMH \xb7 ' + fmtDate(latestClosure.inspection_date) + '</div>';
 }
 
-function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, lastCritical, criticalDates, dist }) {
+function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, lastCritical, criticalDates, reinspection, dist }) {
   const grade = graded ? graded.grade : null;
   const addr = htmlEsc(((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim());
   const gradeLine = graded
@@ -818,6 +842,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
     + violationsHtml(violations)
     + lastCriticalHtml(lastCritical, latest.inspection_date)
+    + reinspectionHtml(reinspection)
     + historyHtml(history)
     + boroCompareHtml(info.boro, grade, graded ? graded.score : null)
     + cuisineCompareHtml(info.cuisine_description, grade, graded ? graded.score : null)
