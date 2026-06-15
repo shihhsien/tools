@@ -1,11 +1,11 @@
 ---
 name: test
-description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 84 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
+description: Run the full Playwright test suite for nyc-restaurant-grade.html. Writes test.mjs, runs all 86 required cases, fixes failures, iterates until all pass, then deletes the file. Use after any change to nyc-restaurant-grade.html to validate at 95%+ confidence.
 ---
 
 # NYC Restaurant Grade — Test Suite
 
-Run the full 84-case Playwright test suite, fix any failures, and confirm 378/378 assertions pass.
+Run the full 86-case Playwright test suite, fix any failures, and confirm 382/382 assertions pass.
 
 ## Setup
 
@@ -101,7 +101,7 @@ const waitErr = (page, ms = 20000) =>
   page.waitForFunction(() => document.getElementById('status').className.includes('err'), { timeout: ms });
 ```
 
-Then implement all 81 test cases exactly as specified in CLAUDE.md §Testing.
+Then implement all 86 test cases exactly as specified in CLAUDE.md §Testing.
 
 Test 19 (Enter key) uses `page.press` rather than `triggerMaps`:
 ```js
@@ -117,7 +117,7 @@ ok(await p.$eval('.name', el => el.textContent) === 'MAZZAT', 'Enter key resolve
 node test.mjs
 ```
 
-Expected output ends with: `378 tests: 378 passed, 0 failed`
+Expected output ends with: `382 tests: 382 passed, 0 failed`
 
 ## Step 3 — Fix failures
 
@@ -682,6 +682,20 @@ Plain DOHMH search with `J([MAZZAT])`. Before opening `#about`, assert `#avg-sco
 `waitForFunction` until `#avg-score` text !== `'8'`, then assert it `=== '8.3'`. Reuse the
 no-`avg_score` dist mocks from tests 61/61b to assert `#avg-score` stays `'8'` there — no
 regression to the existing A-rate-only assertions.
+
+### Critical-violation rate over history (tests 79/79b, v1.44.0)
+Plain DOHMH search (`#q`+`#go`), single `43nn-pn8j` mock returning multi-row fixtures sharing one
+`camis` so `groupByRestaurant` folds them into one restaurant's `history`.
+- **Test 79:** three rows with distinct `inspection_date`s, exactly one with
+  `critical_flag:'Critical'` (the others `'Not Critical'`/`null`). After `.card`, assert
+  `.critical-rate` present and `textContent === 'Critical violations found at 1 of 3 recent
+  inspections'`.
+- **Test 79b:** a single inspection (`J([MAZZAT])`) → assert `.critical-rate` is absent
+  (`criticalRateHtml` needs `history.length >= 2`, same guard as
+  `gradeConsistencyHtml`/`trendHtml`/`sparklineHtml`).
+
+Adds no network calls; existing multi-inspection card tests (36/54/64/75) gain a sibling
+`.critical-rate` but assert against unrelated selectors, so they're unaffected.
 
 ### Offline result cache (test 72, v1.37.0)
 One `T()` runs two phases on the same page so `localStorage` persists across them.

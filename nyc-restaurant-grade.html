@@ -181,6 +181,7 @@
   .viol-desc { font-size: 12px; color: var(--text); line-height: 1.45; }
   /* === History-derived insights (client-side, no extra network) === */
   .grade-consistency { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .critical-rate { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .last-critical { font-size: 12px; color: var(--muted); margin-top: 8px; }
   /* === Borough comparison (opt-in, fetched on open) === */
   .boro-compare { margin-top: 8px; }
@@ -276,7 +277,7 @@
 
 <div id="osm-attr" class="osm-attr" style="display:none">Location lookups &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
 <div id="debug-log"></div>
-<div class="ver">v1.43.0</div>
+<div class="ver">v1.44.0</div>
 
 <script>
 // ---- Config & DOM -----------------------------------------------------
@@ -616,6 +617,9 @@ function groupByRestaurant(rows) {
       .filter(r => r.critical_flag === 'Critical' && r.inspection_date)
       .sort((a, b) => b.inspection_date.localeCompare(a.inspection_date));
     g.lastCritical = crit[0] || null;
+    // Distinct inspection dates with at least one Critical violation — used for the
+    // "critical violations found at N of M recent inspections" rate below.
+    g.criticalDates = new Set(crit.map(r => r.inspection_date));
     const byDate = {};
     for (const r of g.allRows) {
       if (!r.inspection_date) continue;
@@ -758,12 +762,20 @@ function gradeConsistencyHtml(history) {
   return '<div class="grade-consistency">Grade A at ' + aCount + ' of ' + graded.length + ' recent inspections</div>';
 }
 
+// "Critical violations found at N of M recent inspections" — rate across the (≤6) history
+// window, using the per-date critical flags already collected for lastCritical above.
+function criticalRateHtml(history, criticalDates) {
+  if (!history || history.length < 2) return '';
+  const critCount = history.filter(r => criticalDates && criticalDates.has(r.inspection_date)).length;
+  return '<div class="critical-rate">Critical violations found at ' + critCount + ' of ' + history.length + ' recent inspections</div>';
+}
+
 function closureBannerHtml(latestClosure, currentlyClosed) {
   if (!currentlyClosed || !latestClosure) return '';
   return '<div class="closure-banner">⚠ Closed by DOHMH \xb7 ' + fmtDate(latestClosure.inspection_date) + '</div>';
 }
 
-function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, lastCritical, dist }) {
+function cardHtml({ info, graded, latest, violations, history, latestClosure, currentlyClosed, lastCritical, criticalDates, dist }) {
   const grade = graded ? graded.grade : null;
   const addr = htmlEsc(((info.building || '') + ' ' + (info.street || '') + ', ' + (info.boro || '') + ' ' + (info.zipcode || '')).replace(/\s+/g, ' ').trim());
   const gradeLine = graded
@@ -802,6 +814,7 @@ function cardHtml({ info, graded, latest, violations, history, latestClosure, cu
     + trendHtml(history)
     + sparklineHtml(history)
     + gradeConsistencyHtml(history)
+    + criticalRateHtml(history, criticalDates)
     + '<div class="detail muted">Last inspection: ' + fmtDate(latest.inspection_date) + ' \xb7 ' + htmlEsc(latest.inspection_type || '') + '</div>'
     + violationsHtml(violations)
     + lastCriticalHtml(lastCritical, latest.inspection_date)
